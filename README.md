@@ -1,8 +1,9 @@
 
 **ComfyUI-WJNodes explain**
-Ready to use upon download. No need to install dependencies for the time being.
-If there are new functions or suggestions, please provide feedback.
-Attention! The delfile node is not recommended for use on servers. I am not responsible for any losses incurred.
+
+- Ready to use upon download. No need to install dependencies for the time being.
+- If there are new functions or suggestions, please provide feedback.
+- Attention! The delfile node is not recommended for use on servers. I am not responsible for any losses incurred.
 
 **Node list:**
 - Image operations
@@ -26,9 +27,11 @@ Attention! The delfile node is not recommended for use on servers. I am not resp
   - ✅`del file` : Detect if a file or path exists, whether to delete a file. Running requires an input signal. Deleting requires write permission.
   - ✅`split path` : Path slicing. Input path, output: drive letter/path/file/extension + detect if it is a file.
 
+
 **ComfyUI-WJNodes介绍**
-下载即用，暂时无需安装依赖，有新功能或建议请反馈。
-注意！delfile节点不建议在服务器上使用，产生任何损失与本人无关
+
+- 下载即用，暂时无需安装依赖，有新功能或建议请反馈。
+- 注意！delfile节点不建议在服务器上使用，产生任何损失与本人无关
 
 **节点列表**
 - 图片操作
