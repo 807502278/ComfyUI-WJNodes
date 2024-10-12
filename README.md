@@ -4,6 +4,7 @@
 - Ready to use upon download. No need to install dependencies for the time being.
 - If there are new functions or suggestions, please provide feedback.
 - Attention! The delfile node is not recommended for use on servers. I am not responsible for any losses incurred.
+- To disable the delfile node, change the 'DelFile=True' of node/file.exe to 'DelFile=False'
 
 **Node list:**
 - Image operations
@@ -19,6 +20,7 @@
   - ✅`adv crop` : Advanced cropping: Can quickly crop/expand/move/flip images. Can output background mask and custom fill.
   -   (Usage method included in the node. Known bug: When the expansion size is more than 1 time, tiled and mirrored filling cannot be used.)
   - ✅`mask detection` : Mask detection: Detect if there is a mask, detect if it is all hard edges, detect if the mask is pure white/pure black/pure gray and output a value of 0-255.
+  - 🟩`InvertChannelAdv` : Flip/Separate Image Channels, Convert Image RGBA to Mask Batch
 - Others
   - ✅`any_data` : Group any data. Known bug: Nested grouping will split.
 - Paths
@@ -32,6 +34,7 @@
 
 - 下载即用，暂时无需安装依赖，有新功能或建议请反馈。
 - 注意！delfile节点不建议在服务器上使用，产生任何损失与本人无关
+- 修改node/file.py的“DelFile = True”为“DelFile = False”即可禁用delfile节点
 
 **节点列表**
 - 图片操作
