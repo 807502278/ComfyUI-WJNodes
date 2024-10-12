@@ -20,7 +20,7 @@
   - ✅`adv crop` : Advanced cropping: Can quickly crop/expand/move/flip images. Can output background mask and custom fill.
   -   (Usage method included in the node. Known bug: When the expansion size is more than 1 time, tiled and mirrored filling cannot be used.)
   - ✅`mask detection` : Mask detection: Detect if there is a mask, detect if it is all hard edges, detect if the mask is pure white/pure black/pure gray and output a value of 0-255.
-  - 🟩`InvertChannelAdv` : Flip/Separate Image Channels, Convert Image RGBA to Mask Batch
+  - ✅`InvertChannelAdv` : Flip/Separate Image Channels, Convert Image RGBA to Mask Batch
 - Others
   - ✅`any_data` : Group any data. Known bug: Nested grouping will split.
 - Paths
@@ -50,7 +50,7 @@
   - ✅`adv crop` : 高级裁剪:可快速裁剪/扩展/移动/翻转图片,可输出背景遮罩和自定义填充
   -   (节点内附使用方法,已知bug:扩展尺寸超过1倍时无法使用平铺和镜像填充)
   - ✅`mask detection` : 遮罩检测:检测是否有遮罩,检测是否是全硬边,检测遮罩是否是纯白/纯黑/纯灰并输出值0-255
-  - 🟩`InvertChannelAdv` : 翻转/分离图像通道,图像RGBA转遮罩批次
+  - ✅`InvertChannelAdv` : 翻转/分离图像通道,图像RGBA转遮罩批次
 - 其它
   - ✅`any_data` : 将任意数据打组，已知bug:嵌套打组会裂开
 - 路径
