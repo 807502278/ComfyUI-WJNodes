@@ -1,5 +1,8 @@
-import os
 import folder_paths
+import os
+
+DelFile = True
+# DelFile = False
 
 
 class AnyType(str):
@@ -193,14 +196,16 @@ class PrimitiveNode1:  # test node for the primitive node system
 NODE_CLASS_MAPPINGS = {
     "ComfyUIPath": Path_Out,
     "PathAppend": Str_Append,
-    "DelFile": del_file,
     "SplitPath": SplitPath,
     # "PrimitiveNode": PrimitiveNode1
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ComfyUIPath": "ComfyUI Path1",
     "PathAppend": "Str Append",
-    "DelFile": "Delete File",
     "SplitPath": "Split Path",
     # "PrimitiveNode": "Primitive Node1"
 }
+
+if DelFile:
+    NODE_CLASS_MAPPINGS["DelFile"] = del_file
+    NODE_DISPLAY_NAME_MAPPINGS["DelFile"] = "Delete File"
