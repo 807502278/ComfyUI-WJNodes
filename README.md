@@ -4,7 +4,7 @@
 - Ready to use upon download. No need to install dependencies for the time being.
 - If there are new functions or suggestions, please provide feedback.
 - Attention! The delfile node is not recommended for use on servers. I am not responsible for any losses incurred.
-- To disable the delfile node, change the 'DelFile=True' of node/file.exe to 'DelFile=False'
+- To disable the delfile node, change the 'DelFile=True' of node/file.py to 'DelFile=False'
 
 **Node list:**
 - Image operations
