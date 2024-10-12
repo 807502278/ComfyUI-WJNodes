@@ -14,10 +14,30 @@ import node_helpers
 
 from ..moduel.str_edit import str_edit
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
+
+# Retrieve the list of devices recognized by Torch and default devices 获取torch识别到的设备列表和默认设备
+def get_device_list():
+    device_str = ["default", "cpu"]
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            device_str.append(f"cuda:{i}")
+    if torch.backends.mps.is_available():
+        device_str.append("mps:0")
+    n = len(device_str)
+    if n > 2:  # default device 默认设备
+        device_default = torch.device(device_str[2])
+    else:
+        device_default = torch.device(device_str[1])
+
+    # Establish a device list dictionary 建立设备列表字典
+    device_list = {device_str[0]: device_default, }
+    for i in range(n-1):
+        device_list[device_str[i+1]] = torch.device(device_str[i+1])
+
+    return [device_list, device_default]
+
+
+device_list, device_default = get_device_list()
 
 
 def tensor_to_pil(image):  # Tensor to PIL
@@ -85,7 +105,8 @@ class LoadImageFromPath:
             mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
             mask = 1. - torch.from_numpy(mask)
         else:
-            mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
+            mask = torch.zeros((64, 64), dtype=torch.float32,
+                               device=device_default)
         return (image, mask)
 
 
@@ -152,7 +173,8 @@ class LoadImageAdv:
                 mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
                 mask = 1. - torch.from_numpy(mask)
             else:
-                mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
+                mask = torch.zeros(
+                    (64, 64), dtype=torch.float32, device=device_default)
             output_images.append(image)
             output_masks.append(mask.unsqueeze(0))
 
@@ -449,61 +471,50 @@ class adv_crop:
             "Tile": "circular",
             "Extend": "replicate"
         }
+        # Map fill method names to function parameters 将填充方式名称映射到函数参数
         Background = Background_mapping[Background]
 
-        back_mask = None
         crop_data = np.array([left, right, up, down])
+        back_mask = None
+
         if image is not None:
+            image_data = self.get_image_data(image)
+            n, h, w, c, *p = image_data
+            extend_separate, crop_separate = self.process_crop_data(
+                crop_data, h, w)
             image, back_mask = self.data_processing(
-                image, crop_data, back_mask, Background)
-        if mask is not None:
+                crop_separate, extend_separate, image_data, back_mask, Background)
+            if len(list(image.shape)) == 4 and InvertMask:
+                image[..., 3] = 1-image[..., 3]
+
+        if mask is not None:  # 单独处理遮罩与图像，可同时裁剪不同分辨率不同批次的遮罩与图像
+            image_data = self.get_image_data(mask)
+            n, h, w, *p = image_data
+            extend_separate, crop_separate = self.process_crop_data(
+                crop_data, h, w)
             mask, back_mask = self.data_processing(
-                mask, crop_data, back_mask, Background)
+                crop_separate, extend_separate, image_data, back_mask, Background)
             if InvertMask:
                 mask = 1.0 - mask
         if InvertBackMask and back_mask is not None:
             back_mask = 1.0 - back_mask
         return (image, mask, back_mask)
 
-    def data_processing(self, image, crop_data, back_mask, Background):
+    def data_processing(self, crop_data, extend_data, image_data, back_mask, Background):
         # Obtain image data 获取图像数据
-        n, h, w, c, dim, image = self.get_image_data(image)
-        shape_hw = np.array([h, h, w, w])
-
-        # Set the crop data value that exceeds the boundary to the boundary value of -1
-        # 将超出边界的crop_data值设为边界值-1
-        for i in range(crop_data.shape[0]):
-            if crop_data[i] >= h:
-                crop_data[i] = shape_hw[i]-1
-
-        # Determine whether the height exceeds the boundary 判断高是否超出边界
-        if crop_data[0]+crop_data[1] >= h:
-            raise ValueError(
-                f"The height {crop_data[0]+crop_data[1]} of the cropped area exceeds the size of image {shape[2]}")
-        # Determine if the width exceeds the boundary 判断宽是否超出边界
-        elif crop_data[2]+crop_data[3] >= w:
-            raise ValueError(
-                f"The width {crop_data[2]+crop_data[3]} of the cropped area exceeds the size of image {shape[3]}")
-
-        # Separate into cropped and expanded data 分离为裁剪和扩展数据
-        extend_data = np.array([0, 0, 0, 0])
-        for i in range(crop_data.shape[0]):
-            if crop_data[i] < 0:
-                extend_data[i] = abs(crop_data[i])
-                crop_data[i] = 0
+        n, h, w, c, dim, image = image_data
 
         # Expand the image and mask 扩展背景遮罩
         back_mask_run = False
         if back_mask is None:
             back_mask_run = True
             back_mask = torch.ones(
-                (n, h, w), dtype=torch.float32, device=device)
+                (n, h, w), dtype=torch.float32, device=image.device)
             back_mask = torch.nn.functional.pad(
                 back_mask, tuple(extend_data), mode='constant', value=0.0)
 
         # Expand the image and mask 扩展图像和背景遮罩
-            # Filling method during expansion
-            # 扩展时的图像填充方式
+            # Filling method during expansion 扩展时的图像填充方式
         fill_color = 1.0
         if Background == "White":
             Background = "constant"
@@ -523,24 +534,29 @@ class adv_crop:
         if Background == "constant":
             image = torch.nn.functional.pad(
                 image, extend_data, mode=Background, value=fill_color)
+            print(f"avd_crop:expand image {extend_data} to color")
         else:
             image = torch.nn.functional.pad(
                 image, extend_data, mode=Background)
+            print(f"avd_crop:expand image {extend_data} to fill")
 
         # Crop the image and mask 裁剪图像和背景遮罩
         if dim == 4:
+            print("avd_crop:crop image")
             n, h, w, c = image.shape
             image = image[:,
                           crop_data[2]:h-crop_data[3],
                           crop_data[0]:w-crop_data[1],
                           :]
         else:
+            print("avd_crop:crop mask")
             n, h, w = image.shape
             image = image[:,
                           crop_data[2]:h-crop_data[3],
                           crop_data[0]:w-crop_data[1]
                           ]
         if back_mask_run:
+            print("avd_crop:crop back_mask")
             back_mask = back_mask[:,
                                   crop_data[2]:h-crop_data[3],
                                   crop_data[0]:w-crop_data[1]
@@ -554,36 +570,68 @@ class adv_crop:
         n, h, w, c = 1, 1, 1, 1
         if dim == 4:
             n, h, w, c = shape
-            if c == 1:  # 最后一维为单通道时应为遮罩
+            if c == 1:  # When the last dimension is a single channel, it should be a mask 最后一维为单通道时应为遮罩
                 image = image.squeeze(3)
                 dim = 3
-                print(f"""warning: Due to the input not being a standard image tensor,
+                print(f"""avd_crop warning: Due to the input not being a standard image tensor,
                       it has been detected that it may be a mask.
                       We are currently converting {shape} to {image.shape} for processing""")
-            elif h == 1 and (w != 1 or c != 1):  # 第2维为单通道时应为遮罩
+            elif h == 1 and (w != 1 or c != 1):  # When the second dimension is a single channel, it should be a mask 第2维为单通道时应为遮罩
                 image = image.squeeze(1)
                 dim = 3
-                print(f"""warning: Due to the input not being a standard image/mask tensor,
+                print(f"""avd_crop warning: Due to the input not being a standard image/mask tensor,
                       it has been detected that it may be a mask.
                       We are currently converting {shape} to {image.shape} for processing""")
             else:
-                print(f"Processing standard images:{shape}")
+                print(f"avd_crop:Processing standard images:{shape}")
         elif dim == 3:
             n, h, w = shape
-            print(f"Processing standard mask:{shape}")
+            print(f"avd_crop:Processing standard mask:{shape}")
         elif dim == 5:
             n, c, c1, h, w = shape
-            if c == 1 and c1 == 1:  # was插件生成的mask批次可能会有此问题
+            if c == 1 and c1 == 1:  # The mask batch generated by the was plugin may have this issue WAS插件生成的mask批次可能会有此问题
                 image = image.squeeze(1)
-                image = image.squeeze(1)  # 移除mask批次多余的维度
+                # Remove unnecessary dimensions from mask batch 移除mask批次多余的维度
+                image = image.squeeze(1)
                 dim = 3
-                print(f"""warning: Due to the input not being a standard mask tensor,
+                print(f"""avd_crop warning: Due to the input not being a standard mask tensor,
                       it has been detected that it may be a mask.
                       We are currently converting {shape} to {image.shape} for processing""")
         else:  # The image dimension is incorrect 图像维度不正确
             raise ValueError(
-                f"The shape of the input image or mask data is incorrect, requiring image n, h, w, c mask n, h, w \nWhat was obtained is{shape}")
-        return [n, h, w, c, dim,image]
+                f"avd_crop Error: The shape of the input image or mask data is incorrect, requiring image n, h, w, c mask n, h, w \nWhat was obtained is{shape}")
+        return [n, h, w, c, dim, image]
+
+    # Separate cropped data into cropped and expanded data 将裁剪数据分离为裁剪和扩展数据
+    def process_crop_data(self, crop_data, h, w):
+        shape_hw = np.array([h, h, w, w])
+        crop_n = crop_data.shape[0]
+
+        # Set the crops_data value that exceeds the boundary on one side to the boundary value of -1
+        # 将单边超出边界的crop_data值设为边界值-1
+        for i in range(crop_n):
+            if crop_data[i] >= h:
+                crop_data[i] = shape_hw[i]-1
+
+        # Determine whether the total height exceeds the boundary 判断总高度是否超出边界
+        if crop_data[0]+crop_data[1] >= h:
+            raise ValueError(
+                f"avd_crop Error:The height {crop_data[0]+crop_data[1]} of the cropped area exceeds the size of image {h}")
+        # Determine whether the total width exceeds the boundary 判断总宽度是否超出边界
+        elif crop_data[2]+crop_data[3] >= w:
+            raise ValueError(
+                f"avd_crop Error:The width {crop_data[2]+crop_data[3]} of the cropped area exceeds the size of image {w}")
+
+        # Separate into cropped and expanded data 分离为裁剪和扩展数据
+        extend_separate = np.array([0, 0, 0, 0])
+        corp_separate = np.copy(extend_separate)
+        for i in range(crop_n):
+            if crop_data[i] < 0:
+                extend_separate[i] = abs(crop_data[i])
+            else:
+                corp_separate[i] = crop_data[i]
+        return [extend_separate, corp_separate]
+
 
 class mask_detection:
     DESCRIPTION = """
@@ -640,6 +688,124 @@ class mask_detection:
             binary = True
         return (Exist, binary, PureWhite, PureBlack, PureGray, PureColorValue)
 
+
+class invert_channel_adv:
+    DESCRIPTION = """
+    Reverse the channel of the input image
+    反转输入图像的通道。
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        device_select = list(device_list.keys())
+        device_select[0] = "Auto"
+        device_select.insert(0, "Original")
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "invert_R": ("BOOLEAN", {"default": False}),
+                "invert_G": ("BOOLEAN", {"default": False}),
+                "invert_B": ("BOOLEAN", {"default": False}),
+                "invert_A": ("BOOLEAN", {"default": False}),
+                "device": (device_select, {"default": "Original"}),
+            },
+        }
+    CATEGORY = CATEGORY_NAME_WJnode
+    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "MASK", "MASK", "MASK", "MASK")
+    RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A","RGBA_Bath")
+    FUNCTION = "invert_channel"
+
+    def invert_channel(self, image, invert_R, invert_G, invert_B, invert_A, device):
+        print(f"invert_channel:device:{device}")
+        image = image.clone()
+
+        # Device selection 设备选择
+        device_image = image.device
+        if device == "Auto":
+            device == device_list["default"]
+        elif device == "Original":
+            image = image.to(device_default)
+        else:
+            device = device_list[device]
+        if device_image != device and device != "Original":
+            image = image.to(device)
+
+        # Invert the channel 反转通道
+        invert = [invert_R, invert_G, invert_B, invert_A]
+        shape = image.shape
+        if image.shape[3] == 3:# When the input image has only 3 channels, add an alpha channel 输入图像只有3通道时，添加一个全1的alpha通道
+            n, h, w, c = shape
+            print(f"invert_channel:Processing standard images:{image.shape}")
+            image_A = torch.ones(
+                (n, h, w, 1), dtype=torch.float32, device=device_default)
+            image = torch.cat((image, image_A), dim=3)
+        if image.shape[3] == 4:
+            for i in range(len(invert)):
+                if invert[i]:
+                    image[..., i] = 1.0 - image[..., i]
+        else:
+            raise ValueError(
+                f"avd_crop Error:The input image should have 3 or 4 dimensions, but got {shape}")
+        
+        # Separate RGBA images into RGB, R, G, B, A  将RGBA图像分离为RGB, R, G, B, A
+        image_RGB = image[..., :3]
+        r = image[:, :, :, 0]
+        g = image[:, :, :, 1]
+        b = image[:, :, :, 2]
+        a = image[:, :, :, 3]
+        RGBA_Bath=torch.stack((r, g, b, a), dim=0)
+        return (image, image_RGB, r, g, b, a,RGBA_Bath)
+
+class image_channel_bus:  #待开发
+    DESCRIPTION = """
+    Combine the input images into a single image with the specified channels
+    将输入图像合并为具有指定通道的单个图像。
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "optional": {
+                "image": ("IMAGE",),
+                "r":("MASK",),
+                "g":("MASK",),
+                "b":("MASK",),
+                "a":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME_WJnode
+    RETURN_TYPES = ("IMAGE", )
+    RETURN_NAMES = ("RGBA", )
+    FUNCTION = "image_channel_bus"
+
+    def image_channel_bus(self, image, r, g, b, a):
+        image = torch.cat(
+            (r, g, b, a), dim=3)
+        return (image, )
+    
+class RGBABatch_to_image: #待开发
+    DESCRIPTION = """
+    Convert a batch of RGBA images to a single image
+    将RGBA图像批次转换为单个图像。
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mask_batch": ("MASK",),
+            },
+        }
+    CATEGORY = CATEGORY_NAME_WJnode
+    RETURN_TYPES = ("IMAGE", )
+    RETURN_NAMES = ("RGBA", )
+    FUNCTION = "RGBABatch_to_image"
+
+    def RGBABatch_to_image(self, images):
+        image_RGBA = torch.cat(
+            (images[0], images[1], images[2], images[3]), dim=3)
+        return (image_RGBA, )
+
 # The following is a test and has not been imported yet 以下为测试，暂未导入
 
 
@@ -695,6 +861,9 @@ NODE_CLASS_MAPPINGS = {
     "LoadImageAdv": LoadImageAdv,
     "AdvCrop": adv_crop,
     "MaskDetection": mask_detection,
+    "InvertChannelAdv": invert_channel_adv,
+    #"ImageChannelBus": image_channel_bus,
+    #"RGBABatchToImage": RGBABatch_to_image,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromPath": "Load Image From Path",
@@ -704,4 +873,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageAdv": "Load Image Adv",
     "AdvCrop": "Adv Crop",
     "MaskDetection": "Mask Detection",
+    "InvertChannelAdv": "Invert Channel Adv",
+    #"ImageChannelBus": "Image Channel Bus",
+    #"RGBABatchToImage": "RGBA Batch To Image",
 }
