@@ -8,6 +8,7 @@ import os
 import requests
 import math
 from PIL import Image, ImageOps, ImageSequence
+import json
 
 import folder_paths
 import node_helpers
@@ -62,7 +63,6 @@ def mask_to_pil(mask):  # Mask to PIL
     mask_np = mask.cpu().numpy().astype('uint8')
     mask_pil = Image.fromarray(mask_np, mode="L")
     return mask_pil
-
 
 CATEGORY_NAME = "WJNode/Image"
 
@@ -448,6 +448,7 @@ class adv_crop:
                 "left": ("INT", {"default": 0, "min": -32768, "max": 32767}),
                 "right": ("INT", {"default": 0, "min": -32768, "max": 32767}),
                 "Background": (["White", "Black", "Mirror", "Tile", "Extend"],),
+                "InvertValue": ("BOOLEAN", {"default": False}),
                 "InvertMask": ("BOOLEAN", {"default": False}),
                 "InvertBackMask": ("BOOLEAN", {"default": False})
             },
@@ -461,7 +462,7 @@ class adv_crop:
     RETURN_NAMES = ("image", "mask", "back_mask")
     FUNCTION = "adv_crop"
 
-    def adv_crop(self, up, down, left, right, Background, InvertMask, InvertBackMask, image=None, mask=None):
+    def adv_crop(self, up, down, left, right, Background, InvertMask, InvertBackMask, InvertValue, image=None, mask=None):
         Background_mapping = {
             "White": "White",
             "Black": "Black",
@@ -471,6 +472,12 @@ class adv_crop:
         }
         # Map fill method names to function parameters 将填充方式名称映射到函数参数
         Background = Background_mapping[Background]
+
+        if InvertValue:
+            up = -up
+            down = -down
+            left = -left
+            right = -right
 
         crop_data = np.array([left, right, up, down])
         back_mask = None
@@ -960,6 +967,7 @@ NODE_CLASS_MAPPINGS = {
     "MergeImageList": merge_image_list,
     # "ImageChannelBus": image_channel_bus,
     # "RGBABatchToImage": RGBABatch_to_image,
+
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromPath": "Load Image From Path",
@@ -974,4 +982,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MergeImageList": "Merge Image List",
     # "ImageChannelBus": "Image Channel Bus",
     # "RGBABatchToImage": "RGBA Batch To Image",
+
 }

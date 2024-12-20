@@ -155,7 +155,7 @@ class SplitPath:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "file_path": ("STRING", {"default": ""},),
+                "Path": ("STRING", {"default": ""},),
             },
         }
     CATEGORY = CATEGORY_NAME_WJnode
@@ -163,8 +163,7 @@ class SplitPath:
     RETURN_NAMES = ("drive", "path", "Documents", "Extension", "is_file",)
     FUNCTION = "split"
 
-    def split(self,file_path):
-
+    def split(file_path):
         is_path = os.path.isdir(file_path)
         is_file = os.path.isfile(file_path)
         if is_path or is_file:
