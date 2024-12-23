@@ -8,6 +8,7 @@ import os
 import requests
 import math
 from PIL import Image, ImageOps, ImageSequence
+import json
 
 import folder_paths
 import node_helpers
@@ -63,8 +64,7 @@ def mask_to_pil(mask):  # Mask to PIL
     mask_pil = Image.fromarray(mask_np, mode="L")
     return mask_pil
 
-
-CATEGORY_NAME_WJnode = "WJNode/Image"
+CATEGORY_NAME = "WJNode/Image"
 
 # ------------------image load/save nodes--------------------
 
@@ -81,16 +81,14 @@ class LoadImageFromPath:
                 "PathFileName": ("STRING", {"default": ""})
             }
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "MASK")
     RETURN_NAMES = ("image1", "mask1")
     FUNCTION = "load_image"
 
     def load_image(self, PathFileName):
-        image = PathFileName
         # Removes any quotes from Explorer
-        image_path = str(image)
-        image_path = image_path.replace('"', "")
+        image_path = PathFileName.replace('"', "")
         i = None
         if image_path.startswith("http"):
             response = requests.get(image_path)
@@ -128,7 +126,7 @@ class LoadImageAdv:
             },
         }
 
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "MASK", "STRING")
     RETURN_NAMES = ("image", "mask", "path")
     FUNCTION = "load_image"
@@ -214,7 +212,7 @@ class SaveImageToPath:
 
                 }
 
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("IMAGE1", "PATH1")
     # OUTPUT_IS_LIST = (True,)
@@ -281,7 +279,7 @@ class SaveImageOut:
                 "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
                 }
 
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("IMAGE1", "PATH1")
     FUNCTION = "save_images"
@@ -334,10 +332,10 @@ class SelectImagesBatch:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "indexes": ("STRING", {"default": "1,2,", "multiline": True}),
+                "indexes": ("STRING", {"default": "1,2,"}),
             },
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "IMAGE",)
     RETURN_NAMES = ("select_img", "exclude_img")
     FUNCTION = "SelectImages"
@@ -363,10 +361,10 @@ class SelectImagesBatch:
 
 
 # ------------------image edit nodes------------------
-CATEGORY_NAME_WJnode = "WJNode/ImageEdit"
+CATEGORY_NAME = "WJNode/ImageEdit"
 
 
-class image_cutter:
+class image_cutter:  # 开发中
     """
     xy分割图片
     """
@@ -380,7 +378,7 @@ class image_cutter:
                 "y": ("INT", {"default": 1, min: 1, "step": 1}),
             },
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "LIST")
     RETURN_NAMES = ("image_batch", "cutter_data")
     FUNCTION = "cutter_image"
@@ -450,6 +448,7 @@ class adv_crop:
                 "left": ("INT", {"default": 0, "min": -32768, "max": 32767}),
                 "right": ("INT", {"default": 0, "min": -32768, "max": 32767}),
                 "Background": (["White", "Black", "Mirror", "Tile", "Extend"],),
+                "InvertValue": ("BOOLEAN", {"default": False}),
                 "InvertMask": ("BOOLEAN", {"default": False}),
                 "InvertBackMask": ("BOOLEAN", {"default": False})
             },
@@ -458,12 +457,12 @@ class adv_crop:
                 "mask": ("MASK",),
             },
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "MASK", "MASK")
     RETURN_NAMES = ("image", "mask", "back_mask")
     FUNCTION = "adv_crop"
 
-    def adv_crop(self, up, down, left, right, Background, InvertMask, InvertBackMask, image=None, mask=None):
+    def adv_crop(self, up, down, left, right, Background, InvertMask, InvertBackMask, InvertValue, image=None, mask=None):
         Background_mapping = {
             "White": "White",
             "Black": "Black",
@@ -473,6 +472,12 @@ class adv_crop:
         }
         # Map fill method names to function parameters 将填充方式名称映射到函数参数
         Background = Background_mapping[Background]
+
+        if InvertValue:
+            up = -up
+            down = -down
+            left = -left
+            right = -right
 
         crop_data = np.array([left, right, up, down])
         back_mask = None
@@ -659,7 +664,7 @@ class mask_detection:
                 "mask": ("MASK",),
             },
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("BOOLEAN", "BOOLEAN", "BOOLEAN",
                     "BOOLEAN", "BOOLEAN", "int")
     RETURN_NAMES = ("Exist?", "HardEdge", "PureWhite",
@@ -689,6 +694,29 @@ class mask_detection:
         return (Exist, binary, PureWhite, PureBlack, PureGray, PureColorValue)
 
 
+class Accurate_mask_clipping:  # 精确查找遮罩bbox边界 (待开发)
+    DESCRIPTION = """
+    Clip the input mask to the specified range of values
+    裁剪输入mask到指定范围的值
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mask": ("MASK",),
+                "offset": ("INT", {"default": 0, "min": -8192, "max": 8192}),
+            },
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("MASK", )
+    RETURN_NAMES = ("mask", )
+    FUNCTION = "accurate_mask_clipping"
+
+    def accurate_mask_clipping(self, mask, offset):
+        pass
+
+
 class invert_channel_adv:
     DESCRIPTION = """
     Reverse the channel of the input image
@@ -710,9 +738,9 @@ class invert_channel_adv:
                 "device": (device_select, {"default": "Original"}),
             },
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "MASK", "MASK", "MASK", "MASK")
-    RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A","RGBA_Bath")
+    RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A", "RGBA_Bath")
     FUNCTION = "invert_channel"
 
     def invert_channel(self, image, invert_R, invert_G, invert_B, invert_A, device):
@@ -733,7 +761,8 @@ class invert_channel_adv:
         # Invert the channel 反转通道
         invert = [invert_R, invert_G, invert_B, invert_A]
         shape = image.shape
-        if image.shape[3] == 3:# When the input image has only 3 channels, add an alpha channel 输入图像只有3通道时，添加一个全1的alpha通道
+        # When the input image has only 3 channels, add an alpha channel 输入图像只有3通道时，添加一个全1的alpha通道
+        if image.shape[3] == 3:
             n, h, w, c = shape
             print(f"invert_channel:Processing standard images:{image.shape}")
             image_A = torch.ones(
@@ -746,17 +775,18 @@ class invert_channel_adv:
         else:
             raise ValueError(
                 f"avd_crop Error:The input image should have 3 or 4 dimensions, but got {shape}")
-        
+
         # Separate RGBA images into RGB, R, G, B, A  将RGBA图像分离为RGB, R, G, B, A
         image_RGB = image[..., :3]
         r = image[:, :, :, 0]
         g = image[:, :, :, 1]
         b = image[:, :, :, 2]
         a = image[:, :, :, 3]
-        RGBA_Bath=torch.stack((r, g, b, a), dim=0)
-        return (image, image_RGB, r, g, b, a,RGBA_Bath)
+        RGBA_Bath = torch.stack((r, g, b, a), dim=0)
+        return (image, image_RGB, r, g, b, a, RGBA_Bath)
 
-class image_channel_bus:  #待开发
+
+class image_channel_bus:  # 待开发
     DESCRIPTION = """
     Combine the input images into a single image with the specified channels
     将输入图像合并为具有指定通道的单个图像。
@@ -767,13 +797,13 @@ class image_channel_bus:  #待开发
         return {
             "optional": {
                 "image": ("IMAGE",),
-                "r":("MASK",),
-                "g":("MASK",),
-                "b":("MASK",),
-                "a":("MASK",),
+                "r": ("MASK",),
+                "g": ("MASK",),
+                "b": ("MASK",),
+                "a": ("MASK",),
             }
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", )
     RETURN_NAMES = ("RGBA", )
     FUNCTION = "image_channel_bus"
@@ -782,8 +812,9 @@ class image_channel_bus:  #待开发
         image = torch.cat(
             (r, g, b, a), dim=3)
         return (image, )
-    
-class RGBABatch_to_image: #待开发
+
+
+class RGBABatch_to_image:  # 待开发
     DESCRIPTION = """
     Convert a batch of RGBA images to a single image
     将RGBA图像批次转换为单个图像。
@@ -796,7 +827,7 @@ class RGBABatch_to_image: #待开发
                 "mask_batch": ("MASK",),
             },
         }
-    CATEGORY = CATEGORY_NAME_WJnode
+    CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", )
     RETURN_NAMES = ("RGBA", )
     FUNCTION = "RGBABatch_to_image"
@@ -806,8 +837,78 @@ class RGBABatch_to_image: #待开发
             (images[0], images[1], images[2], images[3]), dim=3)
         return (image_RGBA, )
 
-# The following is a test and has not been imported yet 以下为测试，暂未导入
 
+class to_image_list_data:
+    def __init__(self):
+        self.image_list = []
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image1": ("IMAGE",),
+            },
+            "optional": {
+                "image2": ("IMAGE",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE_LIST_DATA",)
+    RETURN_NAMES = ("image_list_data",)
+    FUNCTION = "image_list"
+
+    def image_list(self, image1, image2=None):
+        if self.image_list == []:
+            self.image_list = [image1]
+        else:
+            self.image_list.append(image1)
+        return (self.image_list,)
+
+
+class merge_image_list:  # 待开发
+    DESCRIPTION = """
+    Support packaging images in batches/images lists/single images/packaging into image batches (ignoring null objects, used in loops).
+    支持将图像批次或图像打包成图像列表，若输入图像列表则(可忽略空对象，用于循环中)
+    """
+
+    def __init__(self):
+        self.image_list = []
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image1": ("IMAGE",),
+                "image2": ("IMAGE",),
+            },
+            "optional": {
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image_list",)
+    OUTPUT_IS_LIST = (True,)
+    FUNCTION = "image_list"
+
+    def image_list(self, image1, image2):
+        #未完成
+        return (self.image_list,)
+
+    #    image_list = [image1, image2, image3, image4]
+    #    image_list = self.flatten_array(image_list)
+    #    image_list = list(filter(lambda x: x is not None, image_list))
+    #    return (image_list,)
+
+    # def flatten_array(self, arr):
+    #    flat_arr = []
+    #    for i in arr:
+    #        if isinstance(i, list):
+    #            flat_arr.extend(self.flatten_array(i))
+    #        else:
+    #            flat_arr.append(i)
+    #    return flat_arr
+
+
+# The following is a test and has not been imported yet 以下为测试，暂未导入
 
 class SaveImage1:
     def __init__(self):
@@ -862,8 +963,11 @@ NODE_CLASS_MAPPINGS = {
     "AdvCrop": adv_crop,
     "MaskDetection": mask_detection,
     "InvertChannelAdv": invert_channel_adv,
-    #"ImageChannelBus": image_channel_bus,
-    #"RGBABatchToImage": RGBABatch_to_image,
+    "ToImageListData": to_image_list_data,
+    "MergeImageList": merge_image_list,
+    # "ImageChannelBus": image_channel_bus,
+    # "RGBABatchToImage": RGBABatch_to_image,
+
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromPath": "Load Image From Path",
@@ -874,6 +978,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AdvCrop": "Adv Crop",
     "MaskDetection": "Mask Detection",
     "InvertChannelAdv": "Invert Channel Adv",
-    #"ImageChannelBus": "Image Channel Bus",
-    #"RGBABatchToImage": "RGBA Batch To Image",
+    "ToImageListData": "To Image List Data",
+    "MergeImageList": "Merge Image List",
+    # "ImageChannelBus": "Image Channel Bus",
+    # "RGBABatchToImage": "RGBA Batch To Image",
+
 }
