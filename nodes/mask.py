@@ -526,6 +526,7 @@ class mask_line_mapping:
         return data
 
 
+<<<<<<< HEAD
 class mask_and_mask_math:
     DESCRIPTION = """
     """
@@ -642,6 +643,8 @@ class mask_and_mask_math:
         
 
 
+=======
+>>>>>>> 0120d03f64301cb0ac56ea8fb46e3f26aea694da
 NODE_CLASS_MAPPINGS = {
     #WJNode/MaskEdit
     "LoadColorConfig": load_color_config,
@@ -651,7 +654,10 @@ NODE_CLASS_MAPPINGS = {
     "MaskSelectMask": mask_select_mask,
     "CoordsSelectMask": coords_select_mask,
     "MaskLineMapping": mask_line_mapping,
+<<<<<<< HEAD
     "MaskAndMaskMath": mask_and_mask_math,
+=======
+>>>>>>> 0120d03f64301cb0ac56ea8fb46e3f26aea694da
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     #WJNode/MaskEdit
@@ -662,5 +668,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MaskSelectMask": "Mask Select Mask",
     "CoordsSelectMask": "Coords Select Mask",
     "MaskLineMapping": "Mask Line Mapping",
+<<<<<<< HEAD
     "MaskAndMaskMath": "Mask And Mask Math",
+=======
+>>>>>>> 0120d03f64301cb0ac56ea8fb46e3f26aea694da
 }
