@@ -292,46 +292,6 @@ class color_segmentation_v2:
             return new_mask_i
         else:
             return new_mask
-
-
-class bbox_restore_mask:
-    DESCRIPTION = """
-    
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "reference_image":("IMAGE",),
-                "mask":("MASK",),
-                "crop_region": ("SEG_ELT_crop_region",),#SEG_ELT_crop_region , SEG_ELT_bbox
-                "fill_color":("INT",{"default":0,"min":0,"max":255,"step":1,"display":"slider"}),
-            },
-            "optional": {}
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("MASK",)
-    RETURN_NAMES = ("mask",)
-    FUNCTION = "restore_mask"
-    def restore_mask(self, reference_image, mask, crop_region, fill_color):
-        fill_color = fill_color/255.0
-        bath_bbox = not isinstance(crop_region[0], int)
-        bath_mask = mask.shape[0] != 1
-        h,w = reference_image.shape[1], reference_image.shape[2]
-
-        if not bath_bbox:
-            x1,y1,x2,y2 = crop_region
-            mask = torch.nn.functional.pad(mask, (x1,w-x2,y1,h-y2), "constant", fill_color)
-        elif bath_bbox and bath_mask:
-            if len(crop_region) == mask.shape[0]:
-                for i in range(len(crop_region)):
-                    x1,y1,x2,y2 = crop_region[i]
-                    mask[i] = torch.nn.functional.pad(mask[i], (x1,w-x2,y1,h-y2), "constant", fill_color)
-            else:
-                print("Error-bbox_restore_mask: The number of crop_region does not match the number of masks")
-        else:
-            print("Error-bbox_restore_mask: There are multiple crop_region quantities and one mask quantity, which cannot be matched") 
-        return (mask,)
             
 
 class mask_select_mask:
@@ -415,43 +375,41 @@ class coords_select_mask:
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("MASK","MASK","BOOLEAN","MASK")
-    RETURN_NAMES = ("mask","unselected_mask","Selected","Preview")
+    RETURN_TYPES = ("MASK","MASK","LIST")
+    RETURN_NAMES = ("select_mask", "mask_preview", "select_coords")
     FUNCTION = "coords_select"
     def coords_select(self,mask,point_coords):
         mask_preview = torch.zeros((1,*mask.shape[1:]),dtype=torch.float)
-        print(f"************0{point_coords}")
         if mask.dim() == 2: 
             mask = mask.repeat(1,1,1)
         mask_bool = torch.round(mask).bool()
 
-        if self.depth(point_coords) == 3:
-            point_coords = point_coords[0]
-
-        if self.depth(point_coords) == 2:
+        # 检查坐标数据是否符合规范
+        n = self.depth(point_coords)
+        try:
             point_coords = torch.tensor(point_coords).round().int()
-        else:
-            print("Error-coords_select: The number of point_coords does not match the number of masks")
-            return (None,None,None,mask_preview)
-        print(f"************1{point_coords.shape}")
-        print(f"************1{point_coords}")
+        except:
+            print("Error-coords_select: Single object multi-point coordinates are not currently supported!")
+            print("Error-coords_select: 暂不支持单物体多点坐标！")
+            return (None,mask_preview,None)
+        if n == 3:
+            point_coords = torch.squeeze(point_coords)
+        elif n != 2 or point_coords.shape[-1] != 2:
+            print("Error-coords_select: Coordinate data must be an xy array with a depth of 2 or 3")
+            print("Error-coords_select: 坐标数据深度必须为2或3的xy数组,且每个物体只有一个坐标")
+            return (None,mask_preview,None)
 
-        if point_coords.shape[-1] == 2:
-            
-            #预览点
-            mask_preview = torch.zeros((1,*mask.shape[1:]),dtype=torch.float)
-            for i in point_coords: # 绘制点
-                mask_preview[0,i[0],i[1]] = 1.0
-            mask_preview = mask_preview.unsqueeze(0)
-            kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32)
-            mask_preview = torch.nn.functional.conv2d(mask_preview, kernel, padding=1, stride=1)
-            mask_preview = mask_preview.squeeze()
-            print(f"************2{mask_preview.shape}")
+        # 绘制点用于预览坐标
+        for i in range(len(point_coords)):
+            mask_preview[0,point_coords[i][1],point_coords[i][0]] = 1.0
+        mask_preview = mask_preview.unsqueeze(0)
+        # 扩大点
+        kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32)
+        mask_preview = torch.nn.functional.conv2d(mask_preview, kernel, padding=1, stride=1)
+        mask_preview = mask_preview.squeeze()
+        print(f"************2{mask_preview.shape}")
+        return (None,mask_preview,None)
 
-            return (None,None,None,mask_preview)
-        else:
-            print("Error-coords_select: The number of point_coords does not match the number of masks")
-            return (None,None,None,None)
     def depth(self,lst):
         if not isinstance(lst, list): return 0
         if not lst: return 1
@@ -562,6 +520,15 @@ class mask_and_mask_math:
         elif mask1.shape[0] != 1 and mask2.shape[0] == 1:
             mask2 = mask2.repeat(mask1.shape[0],1,1)
 
+        #check cv2
+        if algorithm == "cv2":
+            try:
+                import cv2
+            except:
+                print("prompt-mask_and_mask_math: cv2 is not installed, Using Torch")
+                print("prompt-mask_and_mask_math: cv2 未安装, 使用torch")
+                algorithm = "torch"
+
         #algorithm
         if algorithm == "cv2":
             if operation == "-":
@@ -647,7 +614,6 @@ NODE_CLASS_MAPPINGS = {
     "LoadColorConfig": load_color_config,
     "ColorSegmentation": color_segmentation,
     "ColorSegmentation_v2": color_segmentation_v2,
-    "BboxRestoreMask": bbox_restore_mask,
     "MaskSelectMask": mask_select_mask,
     "CoordsSelectMask": coords_select_mask,
     "MaskLineMapping": mask_line_mapping,
@@ -658,7 +624,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadColorConfig": "Load Color Config",
     "ColorSegmentation": "Color Segmentation",
     "ColorSegmentation_v2": "Color Segmentation v2",
-    "BboxRestoreMask": "Bbox Restore Mask",
     "MaskSelectMask": "Mask Select Mask",
     "CoordsSelectMask": "Coords Select Mask",
     "MaskLineMapping": "Mask Line Mapping",
