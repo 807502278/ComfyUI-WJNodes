@@ -21,6 +21,12 @@ CATEGORY_NAME_WJnode = "WJNode/Path"
 
 
 class Path_Out:
+    DESCRIPTION = """
+        Common paths for outputting ComfyUI 
+            (root, output/input, plugin, model, cache, Python environment)
+        输出ComfyUI常用路径
+            (根,输出/输入,插件,模型,缓存,python环境)
+    """
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {}, }
@@ -52,52 +58,27 @@ class Path_Out:
 
 
 class Str_Append:
+    DESCRIPTION = """
+        Add prefixes and suffixes to strings, referring to Kijia's node a long time ago
+        给字符串增加前缀后缀,很久以前参考kijia大佬的节点
+    """
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "input": (any,),
-                "prefix": ("STRING", {"default": ""}),
-                "suffix": ("STRING", {"default": ""}),
             },
-            # "optional": {
-            #    "prefix": ("STRING", {"default": ""}),
-            #    "suffix": ("STRING", {"default": ""}),
-            #    }
+            "optional": {
+               "prefix": ("STRING", {"default": ""}),
+               "suffix": ("STRING", {"default": ""}),
+               }
         }
     CATEGORY = CATEGORY_NAME_WJnode
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("str",)
     FUNCTION = "String_Append"
 
-    def String_Append(self, input, prefix, suffix):
-        if isinstance(input, (int, float, bool)):
-            input = str(input)
-        if not (isinstance(input, str)):
-            return (input,)
-        return (prefix+input+suffix,)
-
-
-class Str_Append:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "input": (any,),
-                "prefix": ("STRING", {"default": ""}),
-                "suffix": ("STRING", {"default": ""}),
-            },
-            # "optional": {
-            #    "prefix": ("STRING", {"default": ""}),
-            #    "suffix": ("STRING", {"default": ""}),
-            #    }
-        }
-    CATEGORY = CATEGORY_NAME_WJnode
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("str",)
-    FUNCTION = "String_Append"
-
-    def String_Append(self, input, prefix, suffix):
+    def String_Append(self, input, prefix="", suffix=""):
         if isinstance(input, (int, float, bool)):
             input = str(input)
         if not (isinstance(input, str)):
@@ -110,7 +91,6 @@ class del_file:
     DESCRIPTION = """
         Detect whether a file or folder exists.
         If "Delete" is enabled, delete it after detection. Use with caution.
-
         检测文件或文件夹是否存在
         若Delete打开则在检测到后删除,谨慎使用
     """
@@ -146,7 +126,6 @@ class SplitPath:
     DESCRIPTION = """
         Detect whether a file or folder exists.
         If "Deletes" is enabled, delete it after detection. Use with caution.\n
-
         拆分路径(盘符,路径,文件名,扩展名),检测是文件夹还是文件
         若Deletes打开则在检测到后删除,谨慎使用
     """
