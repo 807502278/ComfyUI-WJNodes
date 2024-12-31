@@ -238,6 +238,47 @@ class SegmDetectorCombined_batch:
         return (mask,)
 
 
+class bbox_restore_mask:
+    DESCRIPTION = """
+    Original plugin: impack-pack
+    crop_region:Restore cropped image (SEG editing)
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "reference_image":("IMAGE",),
+                "mask":("MASK",),
+                "crop_region": ("SEG_ELT_crop_region",),#SEG_ELT_crop_region , SEG_ELT_bbox
+                "fill_color":("INT",{"default":0,"min":0,"max":255,"step":1,"display":"slider"}),
+            },
+            "optional": {}
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("mask",)
+    FUNCTION = "restore_mask"
+    def restore_mask(self, reference_image, mask, crop_region, fill_color):
+        fill_color = fill_color/255.0
+        bath_bbox = not isinstance(crop_region[0], int)
+        bath_mask = mask.shape[0] != 1
+        h,w = reference_image.shape[1], reference_image.shape[2]
+
+        if not bath_bbox:
+            x1,y1,x2,y2 = crop_region
+            mask = torch.nn.functional.pad(mask, (x1,w-x2,y1,h-y2), "constant", fill_color)
+        elif bath_bbox and bath_mask:
+            if len(crop_region) == mask.shape[0]:
+                for i in range(len(crop_region)):
+                    x1,y1,x2,y2 = crop_region[i]
+                    mask[i] = torch.nn.functional.pad(mask[i], (x1,w-x2,y1,h-y2), "constant", fill_color)
+            else:
+                print("Error-bbox_restore_mask: The number of crop_region does not match the number of masks")
+        else:
+            print("Error-bbox_restore_mask: There are multiple crop_region quantities and one mask quantity, which cannot be matched") 
+        return (mask,)
+
+
 class Sam2AutoSegmentation_data:
     DESCRIPTION = """
     Original plugin: ComfyUI-segment-anything-2 
@@ -370,6 +411,7 @@ NODE_CLASS_MAPPINGS = {
     #WJNode/Other-plugins
     "WAS_Mask_Fill_Region_batch": WAS_Mask_Fill_Region_batch,
     "SegmDetectorCombined_batch": SegmDetectorCombined_batch,
+    "bbox_restore_mask": bbox_restore_mask,
     "Sam2AutoSegmentation_data": Sam2AutoSegmentation_data,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -380,5 +422,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     #WJNode/Other-plugins
     "WAS_Mask_Fill_Region_batch": "WAS Mask Fill Region batch",
     "SegmDetectorCombined_batch": "SegmDetectorCombined_batch",
+    "bbox_restore_mask": "bbox restore mask",
     "Sam2AutoSegmentation_data": "Sam2AutoSegmentation_data",
 }
