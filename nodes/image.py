@@ -730,60 +730,125 @@ class invert_channel_adv:
         device_select.insert(0, "Original")
         return {
             "required": {
-                "image": ("IMAGE",),
                 "invert_R": ("BOOLEAN", {"default": False}),
                 "invert_G": ("BOOLEAN", {"default": False}),
                 "invert_B": ("BOOLEAN", {"default": False}),
                 "invert_A": ("BOOLEAN", {"default": False}),
                 "device": (device_select, {"default": "Original"}),
             },
+            "optional": {
+                "RGBA_or_RGB": ("IMAGE",),
+                "R": ("MASK",),
+                "G": ("MASK",),
+                "B": ("MASK",),
+                "A": ("MASK",),
+            }
         }
     CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "MASK", "MASK", "MASK", "MASK")
     RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A", "RGBA_Bath")
     FUNCTION = "invert_channel"
 
-    def invert_channel(self, image, invert_R, invert_G, invert_B, invert_A, device):
-        print(f"invert_channel:device:{device}")
-        image = image.clone()
+    def invert_channel(self, invert_R, invert_G, invert_B, invert_A, device, RGBA_or_RGB=None, R=None, G=None, B=None, A=None):
+        # print(f"invert_channel:device:{device}")
+        channel_dirt = {"R":R, "G":G, "B":B, "A":A}
+        channel_list = list(channel_dirt.values())
+        channel_name = list(channel_dirt.keys())
+        n_none=channel_list.count(None)
+        device_image = None
 
-        # Device selection 设备选择
-        device_image = image.device
-        if device == "Auto":
-            device == device_list["default"]
-        elif device == "Original":
-            image = image.to(device_default)
+        # If the input RGBA is not empty, replace the channel 如果输入的RGBA不为空，则替换通道
+        if RGBA_or_RGB is not None: 
+            _, device_image = self.image_device(RGBA_or_RGB, device)# Device selection 设备选择
+            image = RGBA_or_RGB.clone()
+            # When the input image has only 3 channels, add an alpha channel 
+            # 输入图像只有3通道时，添加一个全1的alpha通道
+            if image.shape[3] == 3:
+                n, h, w, c = image.shape
+                image_A = torch.ones((n, h, w, 1), dtype=torch.float32, device=device_image)
+                image = torch.cat((image, image_A), dim=-1)
+
+            # 如果输入的RGBA不为空，则替换通道
+            if n_none != 4: 
+                for i in range(len(channel_list)):
+                    if channel_list[i] is not None:
+                        if channel_list[i].shape == image[...,i].shape:
+                            image[...,i] = channel_list[i]
+                        else:
+                            print(f"invert_channel_Warning: The input channel {channel_name [i]} does not match the size of the image. The channel replacement has been skipped!")
+                            print(f"invert_channel_警告(CH): 输入的通道 {channel_name[i]} 与image大小不匹配,已跳过该通道替换!")
+
+        # If the input RGBA is empty, combine RGBA into an image 如果输入的RGBA为空，则组合RGBA为图像
         else:
-            device = device_list[device]
-        if device_image != device and device != "Original":
-            image = image.to(device)
+            if n_none == 4: # If both the input image and RGBA are empty, an error will be reported 如果输入image和RGBA都为空，则报错
+                raise ValueError(f"invert_channel_Error: No input image was provided!")
+            # If the image is empty and RGBA is not completely empty, replace the empty channel with all 0s 
+            # 如果image为空,RGBA不全为空，则将空通道替换为全0
+            elif n_none != 0: 
+                channel_0 = None
+                channel_1 = None
+                for i in range(len(channel_list)): # Traverse the channel list and find non empty channels 遍历通道列表，找到不为空的通道
+                    if channel_list[i] is not None:
+                        _, device_image = self.image_device(channel_list[i], device)# Device selection 设备选择
+                        channel_0 = torch.zeros(channel_list[i].shape, device=device_image)
+                        channel_1 = torch.ones(channel_list[i].shape, device=device_image)
+                        break
+                # Traverse the channel list and replace empty channels with all 0s or all 1s 
+                # 遍历通道列表，将空通道替换为全0或全1
+                for i in range(len(channel_list)): 
+                    if channel_list[i] is None:
+                        if i != 3:
+                            channel_list[i] = channel_0
+                        else: # If channel A is empty, replace A with all 1s 如果A通道为空，则将A替换为全1
+                            channel_list[i] = channel_1
+                # Check if the batch quantity is consistent 检测批次数量是否一致
+                batch_n = [channel_list[i].shape[0] for i in range(len(channel_list))] 
+                if max(batch_n) != min(batch_n): 
+                    # Repeat the channel with fewer batches to the channel with more batches 
+                    # 将批次数量少的通道重复到批次数量多的通道
+                    for i in range(len(channel_list)): 
+                        channel_list[i] = channel_list[i].repeat(max(batch_n), 1, 1)
+                        print(f"invert_channel_Warning: The input channel batch does not match. The channel {channel_name [i]} batch {channel_name [i]. shape [0]} has been automatically matched to {max (batch_n)}")
+                        print(f"invert_channel_警告(CH): 输入的通道批次不匹配，已将通道{channel_name[i]}批次{channel_name[i].shape[0]}自动匹配到{max(batch_n)}")
+            # 将通道列表中的每个通道添加一个维度后合成RGBA图像
+            try:
+                channel_list = [i.unsqueeze(3) for i in channel_list]
+                image = torch.cat(channel_list, dim=-1)
+            except:
+                raise ValueError(f"invert_channel_Error: The input channels do not match the size of the image!")
+        
+        # Device selection 设备选择
+        _, device_image = self.image_device(image, device)
 
         # Invert the channel 反转通道
         invert = [invert_R, invert_G, invert_B, invert_A]
-        shape = image.shape
-        # When the input image has only 3 channels, add an alpha channel 输入图像只有3通道时，添加一个全1的alpha通道
-        if image.shape[3] == 3:
-            n, h, w, c = shape
-            print(f"invert_channel:Processing standard images:{image.shape}")
-            image_A = torch.ones(
-                (n, h, w, 1), dtype=torch.float32, device=device_default)
-            image = torch.cat((image, image_A), dim=3)
         if image.shape[3] == 4:
             for i in range(len(invert)):
                 if invert[i]:
                     image[..., i] = 1.0 - image[..., i]
         else:
             raise ValueError(
-                f"avd_crop Error:The input image should have 3 or 4 dimensions, but got {shape}")
+                f"avd_crop Error:The input image should have 3 or 4 dimensions, but got {image.shape}")
 
-        # Separate RGBA images into RGB, R, G, B, A  将RGBA图像分离为RGB, R, G, B, A
-        image_RGB = image[..., :3]
-        r = image[:, :, :, 0]
-        g = image[:, :, :, 1]
-        b = image[:, :, :, 2]
-        a = image[:, :, :, 3]
-        RGBA_Bath = torch.stack((r, g, b, a), dim=0)
-        return (image, image_RGB, r, g, b, a, RGBA_Bath)
+        # Separate RGBA images into R, G, B, A 将RGBA图像分离为R, G, B, A
+        image_RGBA = [image[...,i] for i in range(int(image.shape[-1]))]
+        
+        return (image, #RGBA
+                image[..., :3], #RGB
+                *image_RGBA, #R,G,B,A
+                torch.stack(image_RGBA, dim=0) #RGBA_Bath
+                )
+    def image_device(self, image, device):
+        # Device selection 设备选择
+        if device == "Auto":
+            device_image == device_list["default"]
+            image = image.to(device_image)
+        elif device == "Original":
+            device_image = image.device
+        else:
+            device_image = device_list[device]
+            image = image.to(device_image)
+        return [image, device_image]
 
 
 class image_channel_bus:  # 待开发
@@ -817,7 +882,7 @@ class image_channel_bus:  # 待开发
 class RGBABatch_to_image:  # 待开发
     DESCRIPTION = """
     Convert a batch of RGBA images to a single image
-    将RGBA图像批次转换为单个图像。
+    将RGBA遮罩批次转换为单个图像。
     """
 
     @classmethod
@@ -908,6 +973,65 @@ class merge_image_list:  # 待开发
     #    return flat_arr
 
 
+CATEGORY_NAME = "WJNode/video"
+
+class Video_fade:
+    DESCRIPTION = """
+    Support video fade in and fade out
+        mask: Local gradient is currently under development
+        Exponential: Index gradient development in progress
+    支持视频渐入和渐出
+        mask:局部渐变正在开发中
+        Exponential:指数渐变开发中
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "video1": ("IMAGE",),
+                "video2": ("IMAGE",),
+                "OverlappingFrame": ("INT", {"default": 8, "min": 2, "max": 99999}),
+                "method":(["Linear","Cosine","Exponential"],{"default":"Cosine"}),
+            },
+            "optional": {
+                "mask": ("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","INT")
+    RETURN_NAMES = ("video","frames")
+    FUNCTION = "fade"
+    def fade(self, video1, video2, OverlappingFrame, method="Exponential", mask=None):
+        frame = video1.shape[0]+video2.shape[0]-OverlappingFrame
+        video = None
+
+        # 如果输入视频有alpha通道，则去除alpha通道
+        if video1.shape[3] == 4:
+            video1 = video1[...,:3]
+        if video2.shape[3] == 4:
+            video2 = video2[...,:3]
+
+        # 如果OverlappingFrame为0，则直接合并视频
+        if OverlappingFrame == 2:
+            video = torch.cat((video1, video2), dim=0)
+        elif OverlappingFrame == 3:
+            video_temp = video1[-1]*0.5+video2[0]*0.5
+            video = torch.cat((video1[:-1], video_temp.unsqueeze(0), video2[1:]), dim=0)
+        else:
+            Gradient = []
+            if method == "Linear":
+                Gradient = [i/OverlappingFrame for i in range(OverlappingFrame)]
+            elif method == "Cosine":
+                Gradient = [0.5+0.5*math.cos(i*math.pi/OverlappingFrame) for i in range(OverlappingFrame)]
+            elif method == "Exponential":
+                Gradient = [math.exp(-i/OverlappingFrame) for i in range(OverlappingFrame)]
+            video_temp = torch.zeros((0,*video1.shape[1:]), device=video1.device)
+            for i in range(OverlappingFrame):
+                video_temp_0 = video1[i-OverlappingFrame] * Gradient[i] + video2[i] * (1-Gradient[i])
+                video_temp = torch.cat((video_temp, video_temp_0.unsqueeze(0)), dim=0)
+            video = torch.cat((video1[:-OverlappingFrame], video_temp, video2[OverlappingFrame:]), dim=0)
+        return (video, frame)
+
 # The following is a test and has not been imported yet 以下为测试，暂未导入
 
 class SaveImage1:
@@ -967,7 +1091,7 @@ NODE_CLASS_MAPPINGS = {
     "MergeImageList": merge_image_list,
     # "ImageChannelBus": image_channel_bus,
     # "RGBABatchToImage": RGBABatch_to_image,
-
+    "VideoFade": Video_fade,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromPath": "Load Image From Path",
@@ -982,5 +1106,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MergeImageList": "Merge Image List",
     # "ImageChannelBus": "Image Channel Bus",
     # "RGBABatchToImage": "RGBA Batch To Image",
-
+    "VideoFade": "Video Fade",
 }
