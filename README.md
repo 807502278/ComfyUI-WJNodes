@@ -25,29 +25,37 @@
   - 🟩`coords_select_mask` : Coordinate selection of masks, used to assist SAM2 video keying (under development)
   - ✅`mask_line_mapping` : Mask line mapping, can automatically calculate maximum and minimum values when input is -1 or 256, 
                   can map to specified values
-  - ✅`mask_and_mask_math` : Mask to mask operations, supports addition/subtraction/intersection/multiplication operations, 
+  - ✅`mask_and_mask_math` : Mask to mask operations, supports addition/subtraction/intersection/multiplication operations, \
                   Adjustable cv2 and torch modes, if cv2 is not installed, automatically switches to torch
   - 🟩`Accurate_mask_clipping` : Precise search for mask bbox boundaries (under development)
 - Image Editing: WJNode/ImageEdit
-  - ✅`adv crop` : Advanced cropping: can quickly crop/expand/move/flip images, can output background masks and custom filling 
+  - ✅`adv crop` : Advanced cropping: can quickly crop/expand/move/flip images, can output background masks and custom filling \
                   (Usage method included in the node, known bug: expansion size more than 1 times cannot use tiling and mirror filling)
-  - ✅`mask detection` : Mask detection: detect whether there is a mask, detect whether it is all hard edges, 
+  - ✅`mask detection` : Mask detection: detect whether there is a mask, detect whether it is all hard edges, \
                   detect whether the mask is pure white/pure black/pure gray and output values 0-255
-  - ✅`InvertChannelAdv` : Invert/separate image channels Image ⭐
-                  RGBA to mask batch Replace channels 
+  - ✅`InvertChannelAdv` : Invert/separate image channels Image ⭐\
+                  RGBA to mask batch Replace channels \
                   Any channel to RGBA
-  - ✅`Video_fade` : Two video segments can choose two ways to fade in and out, 
-                  Mask: Local fade in and out under development... 
+  - ✅`Bilateral Filter` : Image/Mask Bilateral Filtering: Can repair layered distortion caused by color or brightness scaling in images
+-Video Editor: WJNode/Video
+  - ✅`Video_fade` : Two video segments can choose two ways to fade in and out, \
+                  Mask: Local fade in and out under development... \
                   Exponential: Exponential gradient under development...
 - Others: WJNode/Other-functions
   - ✅`any_data` : Group any data, known bug: nested grouping will split
   - ✅`show_type` : Display data type
-  - ✅`array_element_count` : Display the number of array elements
-- Plugins: WJNode/Other-plugins
-  - ✅`WAS_Mask_Fill_Region_batch` : Optimize WAS plugin's WAS_Mask_Fill_Region (mask cleanup) to support batches
-  - ✅`SegmDetectorCombined_batch` : Optimize impack-pack plugin's SegmDetectorCombined (segm detection mask) to support batches
-  - ✅`bbox_restore_mask` : Add impack-pack plugin's seg decomposition, restore cropped images through cropping data (SEG editing)
-  - ✅`Sam2AutoSegmentation_data` : Add Sam2AutoSegmentation (kijia) node's color list/coordinate output, used to assist SAM2 video keying
+  - ✅` array_count` :  20250109 Change the original array_element_comunt node to array_count\
+                        Retrieve data shape (array format), count the number of elements at a specified depth, \
+                            count the number of all elements, and count image data\
+                        If changes to this node cause your workflow to fail to run, please notify me
+  - ✅` get image data` :  20250109 Obtain basic data from images/masks (batch/width/height/maximum value)
+- Plugins: WJNode/Other-plugins(To use the following nodes, you must install the following plugins)
+  - ✅`WAS_Mask_Fill_Region_batch` : Optimize WAS plugin's WAS_Mask_Fill_Region (mask cleanup) to support batches[Thanks to @WASasquatch](https://github.com/WASasquatch/was-node-suite-comfyui)
+  - ✅`SegmDetectorCombined_batch` : Optimize impack-pack plugin's SegmDetectorCombined (segm detection mask) to support batches[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+  - ✅`bbox_restore_mask` : Add impack-pack plugin's seg decomposition, restore cropped images through cropping data (SEG editing)[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+  - ✅`Sam2AutoSegmentation_data` : Add Sam2AutoSegmentation (kijia) node's color list/coordinate output, used to assist SAM2 video keying[Thanks to @kijai](https://github.com/kijai/ComfyUI-segment-anything-2)
+  - ✅`ApplyEasyOCR batch` : Modify OCR recognition nodes to load models separately for faster operation and model caching[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
+  - ✅`load EasyOCR model` : Modify OCR recognition nodes to load models separately for faster operation and model caching[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
 - Path: WJNode/Path
   - ✅`comfyui path` : Output comfyui common paths (root, output/input, plugins, models, cache, Python environment)
   - ✅`path append` : Add prefix/suffix to strings (reference KJNode)
@@ -79,29 +87,36 @@
   - ✅`mask_select_mask` : 遮罩选择遮罩批次内的遮罩(有交集即代表选择)
   - 🟩`coords_select_mask` : 坐标选择遮罩，用于辅助SAM2视频抠图(待开发)
   - ✅`mask_line_mapping` : 遮罩线映射，当输入为-1或256时可自动计算最值，可映射到指定值
-  - ✅`mask_and_mask_math` : 遮罩与遮罩的运算，支持加/减/(交集)/乘运算，
+  - ✅`mask_and_mask_math` : 遮罩与遮罩的运算，支持加/减/(交集)/乘运算，\
                             可调cv2和torch两种模式,若未安装cv2则自动切换到torch
   - 🟩`Accurate_mask_clipping` : 精确查找遮罩bbox边界 (待开发)
 - 图像编辑：WJNode/ImageEdit
-  - ✅`adv crop` : 高级裁剪:可快速裁剪/扩展/移动/翻转图片,可输出背景遮罩和自定义填充
-  -   (节点内附使用方法,已知bug:扩展尺寸超过1倍时无法使用平铺和镜像填充)
+  - ✅`adv crop` : 高级裁剪:可快速裁剪/扩展/移动/翻转图片,可输出背景遮罩和自定义填充\
+                    (节点内附使用方法,已知bug:扩展尺寸超过1倍时无法使用平铺和镜像填充)
   - ✅`mask detection` : 遮罩检测:检测是否有遮罩,检测是否是全硬边,检测遮罩是否是纯白/纯黑/纯灰并输出值0-255
-  - ✅`InvertChannelAdv` : 翻转/分离图像通道⭐
-                          图像RGBA转遮罩批次
-                          替换通道
+  - ✅`InvertChannelAdv` : 翻转/分离图像通道⭐\
+                          图像RGBA转遮罩批次\
+                          替换通道\
                           任意通道合成RGBA
-  - ✅`Video_fade` : 两段视频可选两种方式渐入渐出，
-                          遮罩:局部渐入渐出开发中...
+  - ✅`Bilateral Filter` : 图像/遮罩双边滤波-可修复图像因颜色或亮度缩放造成的分层失真    
+- 视频编辑：WJNode/Video
+  - ✅`Video_fade` : 两段视频可选两种方式渐入渐出，\
+                          遮罩:局部渐入渐出开发中...\
                           指数:指数渐变开发中...
 - 其它：WJNode/Other-functions
   - ✅`any_data` : 将任意数据打组，已知bug:嵌套打组会裂开
   - ✅`show_type` : 显示数据类型
-  - ✅`array_element_count` : 显示数组元素数量
-- 插件：WJNode/Other-plugins
-  - ✅`WAS_Mask_Fill_Region_batch` : 优化WAS插件的的WAS_Mask_Fill_Region(遮罩清理)支持批次
-  - ✅`SegmDetectorCombined_batch` : 优化impack-pack插件的的SegmDetectorCombined(segm检测遮罩)支持批次
-  - ✅`bbox_restore_mask` : 增加impack-pack插件的seg分解后，通过裁剪数据恢复裁剪后的图像（SEG编辑）
-  - ✅`Sam2AutoSegmentation_data` : 增加Sam2AutoSegmentation(kijia)节点的颜色列表/坐标输出，用于辅助SAM2视频抠图
+  - ✅`array_count` : 20250109原array_element_count(显示数组元素数量)节点改为array_count
+                              获取数据形状(数组格式)，统计指定深度的元素数量，统计所有元素的数量，统计图像类数据
+                              若此节点的更改导致您的工作流无法运行，请通知我
+  - ✅`get image data` : 20250109从图像/遮罩获取基本数据(批次/宽高/最值)
+- 插件：WJNode/Other-plugins(要使用以下节点，您必须安装以下插件)
+  - ✅`WAS_Mask_Fill_Region_batch` : 优化WAS插件的的WAS_Mask_Fill_Region(遮罩清理)支持批次[Thanks to @WASasquatch](https://github.com/WASasquatch/was-node-suite-comfyui)
+  - ✅`SegmDetectorCombined_batch` : 优化impack-pack插件的的SegmDetectorCombined(segm检测遮罩)支持批次[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+  - ✅`bbox_restore_mask` : 增加impack-pack插件的seg分解后，通过裁剪数据恢复裁剪后的图像（SEG编辑）[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+  - ✅`Sam2AutoSegmentation_data` : 增加Sam2AutoSegmentation(kijia)节点的颜色列表/坐标输出，用于辅助SAM2视频抠图[Thanks to @kijai](https://github.com/kijai/ComfyUI-segment-anything-2)
+  - ✅`ApplyEasyOCR batch` : 修改OCR识别节点，单独加载模型以更快运行和模型缓存[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
+  - ✅`load EasyOCR model` : 修改OCR识别节点，单独加载模型以更快运行和模型缓存[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
 - 路径：WJNode/Path
   - ✅`comfyui path` : 输出comfyui常用路径(根,输出/输入,插件,模型,缓存,python环境)
   - ✅`path append` : 给字符串增加前缀后缀(参考KJNode)
