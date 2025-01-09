@@ -7,6 +7,7 @@ extension_folder = os.path.dirname(os.path.realpath(__file__))# 获取当前文�
 #sys.path.append(extension_folder)
 NODE_CLASS_MAPPINGS = {}# 初始化两个空字典，用于存储节点类映射和节点显示名称映射
 NODE_DISPLAY_NAME_MAPPINGS = {}
+WEB_DIRECTORY = "./web"
 
 pyPath = os.path.join(extension_folder,'nodes')# 将'nodes'添加到模块搜索路径
 
@@ -35,4 +36,5 @@ def loadCustomNodes():# 定义loadCustomNodes函数，用于加载自定义节�
 
 loadCustomNodes()# 调用loadCustomNodes函数，执行加载操作
 
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']# 定义__all__变量，列出模块中可供外部访问的变量或函数
+# 定义__all__变量，列出模块中可供外部访问的变量或函数
+__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']

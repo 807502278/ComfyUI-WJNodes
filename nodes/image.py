@@ -64,9 +64,9 @@ def mask_to_pil(mask):  # Mask to PIL
     mask_pil = Image.fromarray(mask_np, mode="L")
     return mask_pil
 
-CATEGORY_NAME = "WJNode/Image"
 
 # ------------------image load/save nodes--------------------
+CATEGORY_NAME = "WJNode/Image"
 
 
 class LoadImageFromPath:
@@ -312,6 +312,41 @@ class SaveImageOut:
         file = f"{file_path}{filename}_{counter:05}_.png"
         return (images, file,)
         # return { "ui": { "images": results }, "IMAGE":image, "PATH":full_output_folder,}
+
+
+# ------------------image GetData nodes------------------
+CATEGORY_NAME = "WJNode/ImageGetData"
+
+
+class get_image_data:
+    DESCRIPTION = """
+    Obtain image data
+    获取图像数据
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+            },
+            "optional": {
+                "image":("IMAGE",),
+                "mask":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("INT","INT","INT","INT","INT","INT")
+    RETURN_NAMES = ("N","H","W","C","max_HW","min_HW",)
+    FUNCTION = "element_count"
+
+    def element_count(self, image = None, mask = None):
+        shape = [0,0,0,0]
+        if mask is not None:
+            shape = list(mask.shape)
+            shape.append(1)
+        if image is not None:
+            shape = list(image.shape)
+        m = [max(shape[1:3]),min(shape[1:3])]
+        return (*shape,*m)
 
 
 class SelectImagesBatch:
@@ -973,6 +1008,87 @@ class merge_image_list:  # 待开发
     #    return flat_arr
 
 
+class BilateralFilter:
+    DESCRIPTION = """
+    Image/Mask Bilateral Filtering: Can repair layered distortion caused by color or brightness scaling in images
+    CV2 module is required during runtime
+    图像/遮罩双边滤波：可修复图像因颜色或亮度缩放造成的分层失真
+    运行时须cv2模块
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "diameter":("INT",{"default":30,"min":1,"max":2048}),
+                "sigma_color":("FLOAT",{"default":75.0,"min":0.01,"max":256.0}),
+                "sigma_space":("FLOAT",{"default":75.0,"min":0.01,"max":1024.0}),
+            },
+            "optional": {
+                "image":("IMAGE",),
+                "mask":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","MASK",)
+    FUNCTION = "bilateral"
+    def bilateral(self, diameter, sigma_color, sigma_space, image = None, mask = None):
+        if image is None:
+            if mask is None:
+                print("Error: Enter at least one of image and mask !")
+            else:
+                mask = self.Filter_batch(mask,diameter,sigma_color,sigma_space)
+                image = mask.unsqueeze(-1).repeat(1,1,1,3)
+        else:
+            if mask is None:
+                image = self.Filter_batch(image,diameter,sigma_color,sigma_space)
+                if image.dim == 4:
+                    mask = image[...,-1:]
+                else:
+                    mask = torch.mean(image, dim=-1, keepdim=False)
+            else:
+                mask = self.Filter_batch(mask,diameter,sigma_color,sigma_space)
+                image = self.Filter_batch(image,diameter,sigma_color,sigma_space)
+        return (image, mask)
+
+    def Filter_batch(self,image,diameter,sigma_color,sigma_space):
+        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        shape = image.shape
+        if shape[-1] == 3 or len(shape) == 3:
+            if shape[0] > 1 :
+                image_batch = []
+                for i in image:
+                    image_batch.append(self.bilateralFilter(i,diameter,sigma_color,sigma_space).unsqueeze(0))
+                image = torch.cat(image_batch,dim=0)
+            else:
+                image = self.bilateralFilter(image[0],diameter,sigma_color,sigma_space).unsqueeze(0)
+        elif shape[-1] == 4 :
+            if shape[0] > 1 :
+                image_batch = []
+                for i in image:
+                    image_batch.append(self.bilateralFilter_RGBA(i,diameter,sigma_color,sigma_space).unsqueeze(0))
+                image = torch.cat(image_batch,dim=0)
+            else:
+                image = self.bilateralFilter_RGBA(image[0],diameter,sigma_color,sigma_space).unsqueeze(0)
+        else:
+            print("Error: The input is not standard image data, and the original data will be returned !")
+        return image
+    
+    def bilateralFilter(self,image,diameter,sigma_color,sigma_space):
+        import cv2
+        image = np.array(image * 255).astype('uint8')
+        image = cv2.bilateralFilter(image, diameter, sigma_color, sigma_space)
+        image = torch.tensor(image).float()/255
+        return image
+    def bilateralFilter_RGBA(self,image,diameter,sigma_color,sigma_space):
+        import cv2
+        image = np.array(image[...,:-1] * 255).astype('uint8')
+        image_A = np.array(image[...,-1:].squeeze(-1) * 255).astype('uint8')
+        image = cv2.bilateralFilter(image, diameter, sigma_color, sigma_space)
+        image_A = cv2.bilateralFilter(image_A, diameter, sigma_color, sigma_space)
+        image = torch.cat((torch.tensor(image),torch.tensor(image_A).unsqueeze(-1)),dim=-1).float()/255
+        return image
+
+# ------------------video nodes--------------------
 CATEGORY_NAME = "WJNode/video"
 
 class Video_fade:
@@ -1091,6 +1207,7 @@ NODE_CLASS_MAPPINGS = {
     "MergeImageList": merge_image_list,
     # "ImageChannelBus": image_channel_bus,
     # "RGBABatchToImage": RGBABatch_to_image,
+    "BilateralFilter": BilateralFilter,
     "VideoFade": Video_fade,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1106,5 +1223,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MergeImageList": "Merge Image List",
     # "ImageChannelBus": "Image Channel Bus",
     # "RGBABatchToImage": "RGBA Batch To Image",
+    "BilateralFilter": "Bilateral Filter",
     "VideoFade": "Video Fade",
 }

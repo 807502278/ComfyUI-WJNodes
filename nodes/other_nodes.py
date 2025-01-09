@@ -110,39 +110,74 @@ class show_type:
         return (name,)
 
 
-class array_element_count:
+class array_count:
     DESCRIPTION = """
-    When Dim value is -1, ignore this dimension count
+    Retrieve the shape of array class data and count the number of elements
+    获取数组类数据的形状，统计元素数量
     """
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "data": (any,),
-                "Dim0":("INT",{"default":-1,"min":-1,"max":9999999}),
-                "Dim1":("INT",{"default":-1,"min":-1,"max":9999999}),
-                "Dim2":("INT",{"default":-1,"min":-1,"max":9999999})
+                "select_dim":("INT",{"default":0,"min":0,"max":64}),
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("element_count",)
+    RETURN_TYPES = ("LIST","INT","INT","INT","INT","INT","INT")
+    RETURN_NAMES = ("shape","image-N","image-H","image-W","image-C","sum_count","sel_count",)
     FUNCTION = "element_count"
 
-    def element_count(self, data, Dim0, Dim1, Dim2):
-        n = 0
+    def element_count(self, data, select_dim):
+        n, n1= 1, 1
+        s = [0,0,0,0]
         try:
-            if Dim2 != -1:
-                n = len(data[Dim0][Dim1][Dim2])
-            elif Dim1 != -1:
-                n = len(data[Dim0][Dim1])
-            elif Dim0 != -1:
-                n = len(data[Dim0])
-            else:
-                n = len(data)
+            s = list(data.shape)
         except:
-            print("Error: The input data does not have array characteristics.")
-        return (n,)
+            print("Warning: This object does not have a shape property, default output is 0")
+        #try:
+        shape = list(data.shape)
+        if len(shape) == 0:
+            n, n1= 0, 0
+        else:
+            for i in range(len(shape)):
+                n *= shape[i]
+                if i >= select_dim:
+                    n1 *= shape[i]
+        #except:
+        #    print("Error: The input data does not have array characteristics.")
+        return (s,*s,n,n1)
+
+
+class get_image_data:
+    DESCRIPTION = """
+    Obtain image data
+    获取图像数据
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+            },
+            "optional": {
+                "image":("IMAGE",),
+                "mask":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("INT","INT","INT","INT","INT","INT")
+    RETURN_NAMES = ("N","H","W","C","max_HW","min_HW",)
+    FUNCTION = "element_count"
+
+    def element_count(self, image = None, mask = None):
+        shape = [0,0,0,0]
+        if mask is not None:
+            shape = list(mask.shape)
+            shape.append(1)
+        if image is not None:
+            shape = list(image.shape)
+        m = [max(shape[1:3]),min(shape[1:3])]
+        return (*shape,*m)
 
 
 CATEGORY_NAME = "WJNode/Other-plugins"
@@ -407,7 +442,8 @@ NODE_CLASS_MAPPINGS = {
     #WJNode/Other-functions
     "any_data": any_data,
     "show_type": show_type,
-    "array_element_count": array_element_count,
+    "array_count": array_count,
+    "get_image_data": get_image_data,
     #WJNode/Other-plugins
     "WAS_Mask_Fill_Region_batch": WAS_Mask_Fill_Region_batch,
     "SegmDetectorCombined_batch": SegmDetectorCombined_batch,
@@ -418,7 +454,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     #WJNode/Other-functions
     "any_data": "any data", 
     "show_type": "show type",
-    "array_element_count": "array element count",
+    "array_count": "array count",
+    "get_image_data": "get image data",
     #WJNode/Other-plugins
     "WAS_Mask_Fill_Region_batch": "WAS Mask Fill Region batch",
     "SegmDetectorCombined_batch": "SegmDetectorCombined_batch",

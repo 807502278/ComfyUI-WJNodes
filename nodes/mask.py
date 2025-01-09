@@ -606,7 +606,6 @@ class mask_and_mask_math:
             # do nothing - incompatible mask shape: mostly empty mask
             print("Warning-mask_math: The two masks have different shapes")
             return mask1
-        
 
 
 NODE_CLASS_MAPPINGS = {
@@ -618,6 +617,7 @@ NODE_CLASS_MAPPINGS = {
     "CoordsSelectMask": coords_select_mask,
     "MaskLineMapping": mask_line_mapping,
     "MaskAndMaskMath": mask_and_mask_math,
+
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     #WJNode/MaskEdit
@@ -628,4 +628,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CoordsSelectMask": "Coords Select Mask",
     "MaskLineMapping": "Mask Line Mapping",
     "MaskAndMaskMath": "Mask And Mask Math",
+
 }
