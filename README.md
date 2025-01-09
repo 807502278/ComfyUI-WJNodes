@@ -50,12 +50,16 @@
                         If changes to this node cause your workflow to fail to run, please notify me
   - ✅` get image data` :  20250109 Obtain basic data from images/masks (batch/width/height/maximum value)
 - Plugins: WJNode/Other-plugins(To use the following nodes, you must install the following plugins)
-  - ✅`WAS_Mask_Fill_Region_batch` : Optimize WAS plugin's WAS_Mask_Fill_Region (mask cleanup) to support batches[Thanks to @WASasquatch](https://github.com/WASasquatch/was-node-suite-comfyui)
-  - ✅`SegmDetectorCombined_batch` : Optimize impack-pack plugin's SegmDetectorCombined (segm detection mask) to support batches[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
-  - ✅`bbox_restore_mask` : Add impack-pack plugin's seg decomposition, restore cropped images through cropping data (SEG editing)[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
-  - ✅`Sam2AutoSegmentation_data` : Add Sam2AutoSegmentation (kijia) node's color list/coordinate output, used to assist SAM2 video keying[Thanks to @kijai](https://github.com/kijai/ComfyUI-segment-anything-2)
-  - ✅`ApplyEasyOCR batch` : Modify OCR recognition nodes to load models separately for faster operation and model caching[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
-  - ✅`load EasyOCR model` : Modify OCR recognition nodes to load models separately for faster operation and model caching[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
+  - ✅`WAS_Mask_Fill_Region_batch` : Optimize WAS plugin's WAS_Mask_Fill_Region (mask cleanup) to support batches\
+  [Thanks to @WASasquatch](https://github.com/WASasquatch/was-node-suite-comfyui)
+  - ✅`SegmDetectorCombined_batch` : Optimize impack-pack plugin's SegmDetectorCombined (segm detection mask) to support batches\
+  [Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+  - ✅`bbox_restore_mask` : Add impack-pack plugin's seg decomposition, restore cropped images through cropping data (SEG editing)
+  - ✅`Sam2AutoSegmentation_data` : Add Sam2AutoSegmentation (kijia) node's color list/coordinate output, used to assist SAM2 video keying\
+  [Thanks to @kijai](https://github.com/kijai/ComfyUI-segment-anything-2)
+  - ✅`ApplyEasyOCR batch` : Modify OCR recognition nodes to load models separately for faster operation and model caching\
+  [Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
+  - ✅`load EasyOCR model` : load OCR models.
 - Path: WJNode/Path
   - ✅`comfyui path` : Output comfyui common paths (root, output/input, plugins, models, cache, Python environment)
   - ✅`path append` : Add prefix/suffix to strings (reference KJNode)
@@ -111,12 +115,16 @@
                               若此节点的更改导致您的工作流无法运行，请通知我
   - ✅`get image data` : 20250109从图像/遮罩获取基本数据(批次/宽高/最值)
 - 插件：WJNode/Other-plugins(要使用以下节点，您必须安装以下插件)
-  - ✅`WAS_Mask_Fill_Region_batch` : 优化WAS插件的的WAS_Mask_Fill_Region(遮罩清理)支持批次[Thanks to @WASasquatch](https://github.com/WASasquatch/was-node-suite-comfyui)
-  - ✅`SegmDetectorCombined_batch` : 优化impack-pack插件的的SegmDetectorCombined(segm检测遮罩)支持批次[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
-  - ✅`bbox_restore_mask` : 增加impack-pack插件的seg分解后，通过裁剪数据恢复裁剪后的图像（SEG编辑）[Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
-  - ✅`Sam2AutoSegmentation_data` : 增加Sam2AutoSegmentation(kijia)节点的颜色列表/坐标输出，用于辅助SAM2视频抠图[Thanks to @kijai](https://github.com/kijai/ComfyUI-segment-anything-2)
-  - ✅`ApplyEasyOCR batch` : 修改OCR识别节点，单独加载模型以更快运行和模型缓存[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
-  - ✅`load EasyOCR model` : 修改OCR识别节点，单独加载模型以更快运行和模型缓存[Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
+  - ✅`WAS_Mask_Fill_Region_batch` : 优化WAS插件的的WAS_Mask_Fill_Region(遮罩清理)支持批次\
+  [Thanks to @WASasquatch](https://github.com/WASasquatch/was-node-suite-comfyui)
+  - ✅`SegmDetectorCombined_batch` : 优化impack-pack插件的的SegmDetectorCombined(segm检测遮罩)支持批次
+  - ✅`bbox_restore_mask` : 增加impack-pack插件的seg分解后，通过裁剪数据恢复裁剪后的图像(SEG编辑)\
+  [Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
+  - ✅`Sam2AutoSegmentation_data` : 增加Sam2AutoSegmentation(kijia)节点的颜色列表/坐标输出，用于辅助SAM2视频抠图\
+  [Thanks to @kijai](https://github.com/kijai/ComfyUI-segment-anything-2)
+  - ✅`ApplyEasyOCR batch` : 修改OCR识别节点，单独加载模型以更快运行和模型缓存\
+  [Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
+  - ✅`load EasyOCR model` : 单独加载OCR模型
 - 路径：WJNode/Path
   - ✅`comfyui path` : 输出comfyui常用路径(根,输出/输入,插件,模型,缓存,python环境)
   - ✅`path append` : 给字符串增加前缀后缀(参考KJNode)
