@@ -356,7 +356,6 @@ class SelectImagesBatch:
         Return the image at the specified batch number (the first image is numbered 0, and can be arbitrarily repeated and combined) 
         numbers out of range will be ignored, If the input is empty, none will be selected, Chinese commas can be recognized.
     """
-
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -378,13 +377,13 @@ class SelectImagesBatch:
 
         #选择图像批次
         if images is not None:
-            n = images.shape[0]
-            s_i = select_list[(select_list >= 1) & (select_list <= n)]-1
+            n_i = images.shape[0]
+            s_i = select_list[(select_list >= 1) & (select_list <= n_i)]-1
             if len(s_i) < 1:  # 若输入的编号全部不在范围内则返回原输入
                 print("Warning:The input value is out of range, return to the original input.")
                 exclude_img, select_img = images, None
             else:
-                e_i = np.setdiff1d(np.arange(0, n), s_i)  # 排除的图像
+                e_i = np.setdiff1d(np.arange(0, n_i), s_i)  # 排除的图像
                 select_img = images[torch.tensor(s_i, dtype=torch.int)]
                 exclude_img = images[torch.tensor(e_i, dtype=torch.int)]
         else:
@@ -392,13 +391,13 @@ class SelectImagesBatch:
         
         #选择遮罩批次
         if masks is not None:
-            n = masks.shape[0]
-            s_m = select_list[(select_list >= 1) & (select_list <= n)]-1
+            n_m = masks.shape[0]
+            s_m = select_list[(select_list >= 1) & (select_list <= n_m)]-1
             if len(s_m) < 1:  # 若输入的编号全部不在范围内则返回原输入
                 print("Warning:The input value is out of range, return to the original input.")
                 exclude_mask, select_mask = masks, None
             else:
-                e_m = np.setdiff1d(np.arange(0, n), s_m)  # 排除的图像
+                e_m = np.setdiff1d(np.arange(0, n_m), s_m)  # 排除的图像
                 select_mask = masks[torch.tensor(s_m, dtype=torch.int)]
                 exclude_mask = masks[torch.tensor(e_m, dtype=torch.int)]
         else:
@@ -480,7 +479,7 @@ class SelectImagesBatch_v2:
         #选择遮罩
         if masks is not None : 
             mask_order = self.handle_data(select_list,loop,masks.shape[0],limit,loop_method,indexes)
-            select_mask,exclude_mask,_ = self.select_data(images,img_order)
+            select_mask,exclude_mask,_ = self.select_data(masks,img_order)
         else:
             print("Warning: Mask input is empty, output will be empty")
             select_mask,exclude_mask = data_none
@@ -524,7 +523,7 @@ class SelectImagesBatch_v2:
             return None
     
     #选择批次
-    def select_data(self,t,list):
+    def select_data(self, t, list):
         """
         参数：
         t:批次图像/遮罩
@@ -535,7 +534,7 @@ class SelectImagesBatch_v2:
         t:重新组合的批次数据
         e_t:反选批次数据
         """
-        e_s = np.setdiff1d(np.arange(0,t.shape[0]),list)
+        e_s = np.setdiff1d(np.arange(0, t.shape[0]), list)
         e_t = t[torch.tensor(e_s, dtype=torch.int)]
         t = t[torch.tensor(list, dtype=torch.int)]
         return(t,e_t,e_s)
@@ -597,7 +596,7 @@ class SelectBatch_paragraph: #开发中
             print(f"Selected the first {select_list1} image")
             return (images[torch.tensor(select_list1, dtype=torch.float)], 
                     images[torch.tensor(exclude_list, dtype=torch.float)])
-
+ 
 
 class Batch_Average: #开发中
     DESCRIPTION = """
@@ -987,7 +986,7 @@ class Accurate_mask_clipping:  # 精确查找遮罩bbox边界 (待开发)
         pass
 
 
-class invert_channel_adv:
+class invert_channel_adv: #
     DESCRIPTION = """
     Reverse the channel of the input image
     反转输入图像的通道。
@@ -1015,8 +1014,8 @@ class invert_channel_adv:
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "MASK", "MASK", "MASK", "MASK")
-    RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A", "RGBA_Bath")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "MASK", "MASK", "MASK", "MASK", "MASK")
+    RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A", "RGB_Bath", "RGBA_Bath")
     FUNCTION = "invert_channel"
 
     def invert_channel(self, invert_R, invert_G, invert_B, invert_A, device, RGBA_or_RGB=None, R=None, G=None, B=None, A=None):
@@ -1102,12 +1101,15 @@ class invert_channel_adv:
 
         # Separate RGBA images into R, G, B, A 将RGBA图像分离为R, G, B, A
         image_RGBA = [image[...,i] for i in range(int(image.shape[-1]))]
-        
+        image_RGB = image_RGBA[0:int(len(image_RGBA)/4*3)]
+
         return (image, #RGBA
                 image[..., :3], #RGB
                 *image_RGBA, #R,G,B,A
-                torch.stack(image_RGBA, dim=0) #RGBA_Bath
+                torch.cat(image_RGB, dim=0), #RGB_Bath
+                torch.cat(image_RGBA, dim=0) #RGBA_Bath
                 )
+    
     def image_device(self, image, device):
         # Device selection 设备选择
         if device == "Auto":
