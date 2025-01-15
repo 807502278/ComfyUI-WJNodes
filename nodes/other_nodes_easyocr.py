@@ -3,7 +3,6 @@
 # Modification: Loading model separation,
 
 import folder_paths
-import easyocr
 import os
 import logging
 import numpy as np
@@ -166,6 +165,10 @@ class load_EasyOCR_model:
             language = get_classes(language_name)
 
         # 加载模型
+        try :
+            import easyocr
+        except:
+            raise ImportError("Running this node requires the -easyocr- module")
         reader = easyocr.Reader(language, model_storage_directory=model_storage_directory, gpu=gpu)
         return (reader,)
 
