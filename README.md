@@ -12,7 +12,8 @@
   - ✅`load image from path` : Load image from path
   - ✅`save image to path` : Save image by overwriting the path
   - ✅`save image out` : Save image to output and output the path
-  - ✅`select images batch` : Batch selection and recombination of batches
+  - ✅`select images batch` : Batch selection and recombination of batches,updated mask support in 20250115
+  - ✅`select images batch` : 20250115 Batch Selection and Recombination of More Functions
   - ✅`load image adv` : Load image with mask inversion and path output
   - 🟩Load value feature recognition model (e.g., nsfw, aesthetic score, AI value, time)
   - 🟩Input recognition model and image batch, output batch and corresponding feature values
@@ -79,7 +80,8 @@
   - ✅`load image from path` : 从路径加载图片
   - ✅`save image to path` : 通过路径覆盖保存图片
   - ✅`save image out` : 保存图片到output并输出该路径
-  - ✅`select images batch` : 批次选择和重新组合批次
+  - ✅`select images batch` : 批次选择和重新组合批次,20250115更新遮罩支持
+  - ✅`select images batch v2` : 20250115更多功能的批次选择和重新组合批次
   - ✅`load image adv` : 带遮罩反转和路径输出的加载图片
   - 🟩加载值特征识别模型(例如nsfw,美学分数,AI值,time)
   - 🟩输入识别模型和图像批次，输出批次和对应特征值
