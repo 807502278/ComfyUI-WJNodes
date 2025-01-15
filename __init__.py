@@ -9,11 +9,13 @@ NODE_CLASS_MAPPINGS = {}# 初始化两个空字典，用于存储节点类映射
 NODE_DISPLAY_NAME_MAPPINGS = {}
 WEB_DIRECTORY = "./web"
 
-pyPath = os.path.join(extension_folder,'nodes')# 将'nodes'添加到模块搜索路径
+pyPath1 = os.path.join(extension_folder,'nodes')# 将'nodes'添加到模块搜索路径
+pyPath2 = os.path.join(extension_folder,'Other\\nodes_temp')# 添测试模块路径
 
 def loadCustomNodes():# 定义loadCustomNodes函数，用于加载自定义节点和API文件
     # 使用glob.glob搜索pyPath目录下所有有.py结尾的文件，包括子目录中的文件
-    find_files = glob.glob(os.path.join(pyPath, "*.py"), recursive=True)
+    find_files = glob.glob(os.path.join(pyPath1, "*.py"), recursive=True)
+    find_files = find_files + glob.glob(os.path.join(pyPath2, "*.py"), recursive=True)
 
     # 使用glob.glob搜索pyPath目录下的api.py文件
     #api_files = glob.glob(os.path.join(pyPath, "api.py"), recursive=True)
