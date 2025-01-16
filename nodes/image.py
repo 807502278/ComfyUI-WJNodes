@@ -351,7 +351,7 @@ class get_image_data:
 
 class SelectImagesBatch:
     DESCRIPTION = """
-        返回指定批次编号处的图像(第1张编号为0,可以任意重复和排列组合),
+        返回指定批次编号处的图像(第1张编号为0,可以任意重复和排列组合)
         超出范围的编号将被忽略，若输入为空则一个都不选，可识别中文逗号。\n
         Return the image at the specified batch number (the first image is numbered 0, and can be arbitrarily repeated and combined) 
         numbers out of range will be ignored, If the input is empty, none will be selected, Chinese commas can be recognized.
@@ -988,10 +988,52 @@ class Accurate_mask_clipping:  # 精确查找遮罩bbox边界 (待开发)
 
 class invert_channel_adv: #
     DESCRIPTION = """
-    Reverse the channel of the input image
-    反转输入图像的通道。
-    """
+    Functionality:
+    Channel Reorganization: Includes inversion, creation, and replacement of channels, with batch support.
+    Channel Operations: Channel separation, channel batching (can be used for calculations that only support masks).
+    Batch Matching: If different batch sizes are input, it will attempt to automatically match batches (often fails).
 
+    Input: (Resolution must be the same, batch support is available, try to keep batch sizes consistent)
+    RGBA_or_RGB: Input image. If channels are also input, the corresponding channels of this image will be replaced.
+    RGBA_Bath: Input RGBA channel batch, used to recombine RGBA channel batches into an image. 
+                If this is input, it will ignore the input of RGBA_or_RGB.
+    RGB_Bath: Input RGB channel batch, used to recombine RGB channel batches into an image. 
+                If RGBA_or_RGB is input, it will replace the RGB channels of the input image.
+    R/G/B/A: Input channels (all channels must be of the same size). 
+                If only channels are input without an image, an image will be created based on the channels.
+    (Replacement Priority: Later channel data will replace earlier ones. 
+                R/G/B/A > RGB_Bath > RGBA_Bath > RGBA_or_RGB)
+
+    Output: (All outputs are after replacement, inversion, and other operations)
+    RGBA: Output RGBA image, batch support is available. Channels without data will be black.
+    RGB: Output RGB image, batch support is available.
+    R/G/B/A: Output individual RGBA channels.
+    RGB_Bath: Output RGB channel batch, can be used for calculations that only support masks.
+    RGBA_Bath: Output RGBA channel batch, can be used for calculations that only support masks.
+
+    功能：
+    通道重组：含反转/新建/替换通道，支持批次
+    通道操作：分离通道，转通道批次(可用于将图片进行仅支持遮罩的计算)
+    批次匹配：若输入了不同批次大小，会简单尝试自动匹配批次(多半会失败)
+
+    输入：(分辨率必须一样，支持批次，批次大小尽量一样)
+    RGBA_or_RGB：输入图像，若同时输入通道，则该图像的对应通道会被替换，
+    RGBA_Bath：输入RGBA通道批次，用于将RGBA通道批次重新组合为图像，
+            若此处有输入则会忽略RGBA_or_RGB输入
+    RGB_Bath：输入RGB通道批次，用于将RGB通道批次重新组合为图像，
+            若RGBA_or_RGB有输入则替换输入的图像rgb通道
+    R/G/B/A：输入通道(所有通道须大小一样)，
+            若仅输入通道不输入图像则根据通道新建图像
+    (替换优先级：后面的通道数据会被前面的替换
+            R/G/B/A > RGB_Bath > RGBA_Bath > RGBA_or_RGB )
+
+    输出：(所有输出均为替换/反转等操作后的)
+    RGBA：输出RGBA图像，支持批次，若某通道无数据将为黑色
+    RGB：输出RGB图像，支持批次
+    R/G/B/A：输出RGBA单独的通道
+    RGB_Bath：输出RGB通道批次，可用于将图片进行仅支持遮罩的计算
+    RGBA_Bath：输出RGBA通道批次，可用于将图片进行仅支持遮罩的计算\
+    """
     @classmethod
     def INPUT_TYPES(s):
         device_select = list(device_list.keys())
@@ -1007,6 +1049,8 @@ class invert_channel_adv: #
             },
             "optional": {
                 "RGBA_or_RGB": ("IMAGE",),
+                "RGBA_Bath": ("MASK",),
+                "RGB_Bath": ("MASK",),
                 "R": ("MASK",),
                 "G": ("MASK",),
                 "B": ("MASK",),
@@ -1018,15 +1062,52 @@ class invert_channel_adv: #
     RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A", "RGB_Bath", "RGBA_Bath")
     FUNCTION = "invert_channel"
 
-    def invert_channel(self, invert_R, invert_G, invert_B, invert_A, device, RGBA_or_RGB=None, R=None, G=None, B=None, A=None):
-        # print(f"invert_channel:device:{device}")
-        channel_dirt = {"R":R, "G":G, "B":B, "A":A}
-        channel_list = list(channel_dirt.values())
+    def invert_channel(self, 
+                       invert_R, invert_G, invert_B, invert_A, 
+                       device, 
+                       RGBA_or_RGB=None, RGBA_Bath=None, RGB_Bath=None, 
+                       R=None, G=None, B=None, A=None):
+        #初始化通道数据
+        channel_dirt = {"R":None, "G":None, "B":None, "A":None}
         channel_name = list(channel_dirt.keys())
+
+        #要替换的通道-RGBA_Bath
+        if RGBA_Bath is not None:
+            n = RGBA_Bath.shape[0]
+            if n % 4 == 0:
+                m = int(n / 4)
+                for i in range(4):
+                    channel_dirt[channel_name[i]] = RGBA_Bath[i*m:(i+1)*m,...]
+            else:
+                print("Warning: RGBA_Cath mask batch input not RGBA detected, this input will be skipped !")
+                print("警告：检测到RGBA_Bath遮罩批次输入不为RGBA，将跳过此输入!")
+
+        #要替换的通道-RGB_Bath
+        if RGB_Bath is not None:
+            n = RGB_Bath.shape[0]
+            if n % 3 == 0:
+                m = int(n / 3)
+                for i in range(3):
+                    channel_dirt[channel_name[i]] = RGB_Bath[i*m:(i+1)*m,...]
+                    print(f"*******************degub：第{i}个通道形状为：{channel_dirt[channel_name[i]].shape}")
+            else:
+                print("Warning: RGBA_Cath mask batch input not RGBA detected, this input will be skipped !")
+                print("警告：检测到RGB_Bath遮罩批次输入不为RGB，将跳过此输入!")
+
+        #要替换的单通道-RGBA
+        channel_dirt_temp = {"R":R, "G":G, "B":B, "A":A}
+        channel_list_temp = list(channel_dirt_temp.values())
+        for i in range(4):
+            if channel_list_temp[i] is not None:
+                channel_dirt[channel_name[i]] = channel_list_temp[i]
+
+        #要替换最终通道
+        channel_list = list(channel_dirt.values())
         n_none=channel_list.count(None)
         device_image = None
 
-        # If the input RGBA is not empty, replace the channel 如果输入的RGBA不为空，则替换通道
+        # If the input RGBA is not empty, replace the channel 
+        # 如果输入的RGBA不为空，则替换通道
         if RGBA_or_RGB is not None: 
             _, device_image = self.image_device(RGBA_or_RGB, device)# Device selection 设备选择
             image = RGBA_or_RGB.clone()
@@ -1050,7 +1131,12 @@ class invert_channel_adv: #
         # If the input RGBA is empty, combine RGBA into an image 如果输入的RGBA为空，则组合RGBA为图像
         else:
             if n_none == 4: # If both the input image and RGBA are empty, an error will be reported 如果输入image和RGBA都为空，则报错
-                raise ValueError(f"invert_channel_Error: No input image was provided!")
+                if RGBA_Bath is not None:
+                    raise ValueError(f"invert_channel_Error: Input RGBA_Cath is not an RGBA batch data !\ninvert_channel_错误:输入RGBA_Bath不是RGBA批次数据！")
+                elif RGB_Bath is not None:
+                    raise ValueError(f"invert_channel_Error: Input RGB_Cath is not an RGB batch data !\ninvert_channel_错误:输入RGB_Bath不是RGB批次数据！")
+                else:
+                    raise ValueError(f"invert_channel_Error: No input image was provided !\ninvert_channel_错误:未输入任何图像数据！")
             # If the image is empty and RGBA is not completely empty, replace the empty channel with all 0s 
             # 如果image为空,RGBA不全为空，则将空通道替换为全0
             elif n_none != 0: 
@@ -1077,8 +1163,8 @@ class invert_channel_adv: #
                     # 将批次数量少的通道重复到批次数量多的通道
                     for i in range(len(channel_list)): 
                         channel_list[i] = channel_list[i].repeat(max(batch_n), 1, 1)
-                        print(f"invert_channel_Warning: The input channel batch does not match. The channel {channel_name [i]} batch {channel_name [i]. shape [0]} has been automatically matched to {max (batch_n)}")
-                        print(f"invert_channel_警告(CH): 输入的通道批次不匹配，已将通道{channel_name[i]}批次{channel_name[i].shape[0]}自动匹配到{max(batch_n)}")
+                        print(f"invert_channel_Warning: The input channel batch does not match. The channel {channel_name [i]} batch {image.shape [0]} has been automatically matched to {max (batch_n)}")
+                        print(f"invert_channel_警告(CH): 输入的通道批次不匹配，已将通道{channel_name[i]}批次{image.shape[0]}自动匹配到{max(batch_n)}")
             # 将通道列表中的每个通道添加一个维度后合成RGBA图像
             try:
                 channel_list = [i.unsqueeze(3) for i in channel_list]
