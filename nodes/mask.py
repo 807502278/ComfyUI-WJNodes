@@ -362,7 +362,7 @@ class mask_select_mask:
         return mask
 
 
-class coords_select_mask:
+class coords_select_mask: #开发中
     DESCRIPTION = """
     Under development...
     """
@@ -614,7 +614,7 @@ NODE_CLASS_MAPPINGS = {
     "ColorSegmentation": color_segmentation,
     "ColorSegmentation_v2": color_segmentation_v2,
     "MaskSelectMask": mask_select_mask,
-    "CoordsSelectMask": coords_select_mask,
+    # "CoordsSelectMask": coords_select_mask,
     "MaskLineMapping": mask_line_mapping,
     "MaskAndMaskMath": mask_and_mask_math,
 
@@ -625,7 +625,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ColorSegmentation": "Color Segmentation",
     "ColorSegmentation_v2": "Color Segmentation v2",
     "MaskSelectMask": "Mask Select Mask",
-    "CoordsSelectMask": "Coords Select Mask",
+    # "CoordsSelectMask": "Coords Select Mask",
     "MaskLineMapping": "Mask Line Mapping",
     "MaskAndMaskMath": "Mask And Mask Math",
 
