@@ -152,3 +152,51 @@ def pils_erode_masks(mask_list):
         out_mask_list.append(Image.fromarray(alpha[:, :, None]))
 
     return out_mask_list
+
+# Retrieve the list of devices recognized by Torch and default devices 
+# 获取torch识别到的设备列表和默认设备
+def get_device_list():
+    device_str = ["default", "cpu"]
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            device_str.append(f"cuda:{i}")
+    if torch.backends.mps.is_available():
+        device_str.append("mps:0")
+    n = len(device_str)
+    if n > 2:  # default device 默认设备
+        device_default = torch.device(device_str[2])
+    else:
+        device_default = torch.device(device_str[1])
+
+    # Establish a device list dictionary 建立设备列表字典
+    device_list = {device_str[0]: device_default, }
+    for i in range(n-1):
+        device_list[device_str[i+1]] = torch.device(device_str[i+1])
+
+    return [device_list, device_default]
+
+device_list, device_default = get_device_list()
+
+
+def tensor_to_pil(image):  # Tensor to PIL
+    return Image.fromarray(
+        np.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
+
+
+def pil_to_tensor(image):  # PIL to Tensor
+    return torch.from_numpy(
+        np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+
+
+def pil_to_mask(image):  # PIL to Mask
+    image_np = np.array(image.convert("L")).astype(np.float32) / 255.0
+    mask = torch.from_numpy(image_np)
+    return 1.0 - mask
+
+
+def mask_to_pil(mask):  # Mask to PIL
+    if mask.ndim > 2:
+        mask = mask.squeeze(0)
+    mask_np = mask.cpu().numpy().astype('uint8')
+    mask_pil = Image.fromarray(mask_np, mode="L")
+    return mask_pil

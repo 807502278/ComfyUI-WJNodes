@@ -6,7 +6,7 @@ supported_pt_extensions = set(['.ckpt', '.pt', '.bin', '.pth', '.safetensors', '
 
 folder_names_and_paths = {}
 
-base_path = os.path.dirname(os.path.realpath(__file__))
+base_path = os.path.dirname(os.path.realpath(__file__)) #这里的路径和comfy根目录folder_paths内的不同
 models_dir = os.path.join(base_path, "models")
 folder_names_and_paths["checkpoints"] = ([os.path.join(models_dir, "checkpoints")], supported_pt_extensions)
 folder_names_and_paths["configs"] = ([os.path.join(models_dir, "configs")], [".yaml"])

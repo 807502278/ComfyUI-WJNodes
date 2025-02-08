@@ -20,7 +20,7 @@ def loadCustomNodes(pyPath):# 加载自定义节点和API文件
             files = glob.glob(os.path.join(i, "*.py"))
             find_files = find_files + files
     if len(find_files) == 0:
-        print("Error:Node code not found, cancel importing ComfyUI-WJNode !")
+        print("Error:Node code not found, cancel importing ComfyUI-WJNode!")
     else:
         for file in find_files:# 遍历文件列表
             file_relative_path = file[len(extension_folder):]# 计算文件相对于extension_folder的路径
@@ -33,6 +33,9 @@ def loadCustomNodes(pyPath):# 加载自定义节点和API文件
                 # 如果模块中还有NODE_DISPLAY_NAME_MAPPINGS属性并且它不为空，则更新显示名称映射
                 if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS") and getattr(module, "NODE_DISPLAY_NAME_MAPPINGS") is not None:
                     NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
+                # 没有NODE_DISPLAY_NAME_MAPPINGS属性，则自动名称映射(下划线替换为空格作为名称)
+                else:
+                    NODE_DISPLAY_NAME_MAPPINGS.update({i:i.replace("_"," ") for i in module.NODE_CLASS_MAPPINGS.keys()})
             if hasattr(module, "init"):# 如果模块中有init函数，则调用它进行初始化
                 getattr(module, "init")()
 

@@ -1,10 +1,14 @@
 import torch
 import numpy as np
 import random
+import os
 from PIL import Image, ImageOps
+from pathlib import Path
 
+import folder_paths 
 from comfy.utils import ProgressBar
 import comfy.model_management as mm
+from ..moduel.str_edit import str_edit
 from ..moduel.str_edit import str_edit
 
 def pil_to_mask(image):  # PIL to Mask
@@ -27,7 +31,7 @@ any = AnyType("*")
 # ------------------GetData nodes------------------
 CATEGORY_NAME = "WJNode/GetData"
 
-class SelectImagesBatch:
+class Select_Images_Batch:
     DESCRIPTION = """
         返回指定批次编号处的图像(第1张编号为0,可以任意重复和排列组合)
         超出范围的编号将被忽略，若输入为空则一个都不选，可识别中文逗号。\n
@@ -85,7 +89,7 @@ class SelectImagesBatch:
                 select_mask, exclude_mask)
 
 
-class SelectBatch_v2:
+class Select_Batch_v2:
     DESCRIPTION = """
         功能：
         返回指定批次编号处的图像，第1张编号为0,可以任意重复和排列组合
@@ -307,7 +311,7 @@ class Batch_Average: #开发中
         ...
 
 
-class mask_detection:
+class Mask_Detection:
     DESCRIPTION = """
     Input mask and perform duplicate detection:
         1: Whether it exists.
@@ -338,9 +342,9 @@ class mask_detection:
                     "BOOLEAN", "BOOLEAN", "int")
     RETURN_NAMES = ("Exist?", "HardEdge", "PureWhite",
                     "PureBlack", "PureGray", "PureColorValue")
-    FUNCTION = "mask_detection"
+    FUNCTION = "MaskDetection"
 
-    def mask_detection(self, mask):
+    def MaskDetection(self, mask):
         Exist = True
         binary = False
         PureWhite = False
@@ -517,6 +521,83 @@ class any_data:
             data_array[5] = data_6
 
         return (data_array, data_1, data_2, data_3, data_4, data_5, data_6,)
+
+
+class Folder_link: #开发中
+    nodes_list = os.listdir(os.path.join(folder_paths.base_path,"custom_nodes"))
+    @classmethod
+    def INPUT_TYPES(s):
+        nodes_list_name = s.nodes_list.insert(0,"** Do not map **")
+        nodes_list = nodes_list.insert(1,"** All map !**")
+        return {
+            "required": {
+                        "path_class":(["autodl-tmp","autodl-fs","Win-Parent", "Win-Ancestors"],),
+                        "Check_link":("BOOLEAN",{"default":True}),
+                        "FileConflict":(["Ignore", "REname", "Move(overwrite)", "Move(not overwrite)", "Delete"],{"default":"Ignore"}),
+                        "link_models":("BOOLEAN",{"default":True}),
+                        "link_aux":("BOOLEAN",{"default":True}),
+                        "custom_nodes":(nodes_list_name,{"default":nodes_list_name[0]}),
+            },
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = (None,)
+    FUNCTION = "Folder_link"
+    def Folder_link(self,path_class,Check_link,FileConflict,link_models,link_aux,custom_nodes):
+        path_class = "./"
+        if path_class == "autodl-tmp" or path_class == "autodl-fs":
+            path = os.path.join("root",path_class)
+        elif path_class == "Win-Parent":
+            path = str(Path(folder_paths.base_path).parent)
+        elif path_class == "Win-Ancestors":
+            path = str(Path(folder_paths.base_path).parent.parent)
+
+        path_model = os.path.join(path,"models")
+        path_custom = os.path.join(folder_paths.base_path,"custom_nodes")
+        path_aux = os.path.join(path_custom, "comfyui_controlnet_aux", "ckpts")
+        
+        path_model_link = folder_paths.models_dir
+        path_custom_link = folder_paths.folder_names_and_paths["custom_nodes"]
+        path_aux_link = os.path.join(path_custom_link, "comfyui_controlnet_aux", "ckpts")
+
+
+        if link_models:
+            self.run_path_link(path_model,path_model_link,Check_link,FileConflict)
+        if link_aux:
+            self.run_path_link(path_aux,path_aux_link,Check_link,FileConflict)
+        if custom_nodes == "** Do not map **":
+            pass
+        elif custom_nodes == "** All map !**":
+            ...
+        else:
+            ...
+        return(None,)
+    
+    def run_path_link(path,path_link,Check_link,FileConflict):
+        p = Path(path)
+        p_link = Path(path_link)
+        if Check_link:
+            if p_link.is_symlink(): #link存在
+                if not p_link.readlink().exists(): #link失效则重建
+                    p_link.unlink()
+                    if p.exists(): p.mkdir(parents=True) #路径不存在则创建
+                    p_link.symlink_to(p)
+                    print(f"原链接 {path_link} 已失效，\n更新为 {path}")
+                else:
+                    print(f"链接 {path_link} --> \n{path} 正常,已跳过")
+            else: #p_link不是符号链接
+                if p_link.exists():
+                    if FileConflict == "Ignore":
+                        pass
+                    elif FileConflict == "REname":
+                        p_link.replace(p_link.parts[-1])
+                    elif FileConflict == "Move(overwrite)":
+                        p_link.rename(p)
+                    elif FileConflict == "Move(not overwrite)":
+                        ...
+                    elif FileConflict == "Delete":
+                        ...
+                if p.exists(): p.mkdir(parents=True) #路径不存在则创建
+                p_link.symlink_to(p)
 
 
 CATEGORY_NAME = "WJNode/Other-plugins"
@@ -779,9 +860,9 @@ class Sam2AutoSegmentation_data:
 
 NODE_CLASS_MAPPINGS = {
     #WJNode/GetData
-    "SelectImagesBatch": SelectImagesBatch,
-    "SelectBatch_v2": SelectBatch_v2,
-    "MaskDetection": mask_detection,
+    "Select_Images_Batch": Select_Images_Batch,
+    "Select_Batch_v2": Select_Batch_v2,
+    "Mask_Detection": Mask_Detection,
     #WJNode/Other-functions
     "any_data": any_data,
     "get_TypeName": get_TypeName,
@@ -792,20 +873,4 @@ NODE_CLASS_MAPPINGS = {
     "SegmDetectorCombined_batch": SegmDetectorCombined_batch,
     "bbox_restore_mask": bbox_restore_mask,
     "Sam2AutoSegmentation_data": Sam2AutoSegmentation_data,
-}
-NODE_DISPLAY_NAME_MAPPINGS = {
-    #WJNode/GetData
-    "SelectImagesBatch": "Select Images Batch",
-    "SelectBatch_v2": "Select Batch v2",
-    "MaskDetection": "Mask Detection",
-    #WJNode/Other-functions
-    "any_data": "any data", 
-    "get_TypeName": "get TypeName",
-    "array_count": "array count",
-    "get_image_data": "get image data",
-    #WJNode/Other-plugins
-    "WAS_Mask_Fill_Region_batch": "WAS Mask Fill Region batch",
-    "SegmDetectorCombined_batch": "SegmDetectorCombined_batch",
-    "bbox_restore_mask": "bbox restore mask",
-    "Sam2AutoSegmentation_data": "Sam2AutoSegmentation_data",
 }

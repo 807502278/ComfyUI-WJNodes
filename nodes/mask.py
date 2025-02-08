@@ -17,7 +17,7 @@ class load_color_config:
     DESCRIPTION = """
     
     """
-    config_file_path = os.path.join(folder_paths.base_path, "custom_nodes/ComfyUI-WJNodes/seg_color")
+    config_file_path = os.path.join(folder_paths.base_path, "custom_nodes/ComfyUI-WJNodes/config/seg_color")
     @classmethod
     def INPUT_TYPES(s):
         config_file_list = []
@@ -610,23 +610,11 @@ class mask_and_mask_math:
 
 NODE_CLASS_MAPPINGS = {
     #WJNode/MaskEdit
-    "LoadColorConfig": load_color_config,
-    "ColorSegmentation": color_segmentation,
-    "ColorSegmentation_v2": color_segmentation_v2,
-    "MaskSelectMask": mask_select_mask,
-    # "CoordsSelectMask": coords_select_mask,
-    "MaskLineMapping": mask_line_mapping,
-    "MaskAndMaskMath": mask_and_mask_math,
-
-}
-NODE_DISPLAY_NAME_MAPPINGS = {
-    #WJNode/MaskEdit
-    "LoadColorConfig": "Load Color Config",
-    "ColorSegmentation": "Color Segmentation",
-    "ColorSegmentation_v2": "Color Segmentation v2",
-    "MaskSelectMask": "Mask Select Mask",
-    # "CoordsSelectMask": "Coords Select Mask",
-    "MaskLineMapping": "Mask Line Mapping",
-    "MaskAndMaskMath": "Mask And Mask Math",
-
+    "load_color_config": load_color_config,
+    "color_segmentation": color_segmentation,
+    "color_segmentation_v2": color_segmentation_v2,
+    "mask_select_mask": mask_select_mask,
+    # "coords_select_mask": coords_select_mask,
+    "mask_line_mapping": mask_line_mapping,
+    "mask_and_mask_math": mask_and_mask_math,
 }

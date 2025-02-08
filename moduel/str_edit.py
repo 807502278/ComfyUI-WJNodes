@@ -7,11 +7,15 @@ class str_edit:
     str_to_list.convert_list(string_input, arrangement=True): Converts a string to a list.
         If arrangement=True, it cleans unnecessary characters by default.
     str_to_list.str_arrangement(user_input): Converts a string to a list-style string.
+    中文说明
+    str_to_list.convert_list(string_input,arrangement=True)将字符串转换为列表。
+        如果arrangement=True,默认清除不必要的字符。
+    str_to_list.str_arrangement(user_input)将字符串转换为列表样式的字符串。
     """
     def __init__(self):
         pass
     @classmethod
-    def convert_list(cls, string_input,arrangement=True):
+    def convert_list(cls, string_input:str,arrangement=True):
         if string_input == "":
             return ([],)
         if arrangement:
@@ -30,7 +34,7 @@ class str_edit:
         user_input = re.sub(r'[^\d,.\-[\]]', '', user_input)#去除非数字字符，但不包括,.-[]
         return user_input
     @classmethod
-    def tolist_v2(cls,str_input,to_list=True,to_oneDim=False,to_int=False,positive=False):#转换为数组格式
+    def tolist_v2(cls,str_input:str,to_list=True,to_oneDim=False,to_int=False,positive=False):#转换为数组格式
         if str_input == "":
             if to_list:return ([],)
             else:return ""
@@ -40,9 +44,10 @@ class str_edit:
                 str_input = re.sub(r'[\(\)\[\]\{\}（）【】｛｝]', "" , str_input)
                 str_input = "[" + str_input + "]"
             else:
-                text=re.sub(r'[\(\[\{（【｛]', '[', text)#替换括号
-                text=re.sub(r'[\)\]\}）】｝]', ']', text)#替换反括号
-                if str_input[0] != "[":str_input = "[" + str_input + "]"
+                str_input=re.sub(r'[\(\[\{（【｛]', '[', str_input)#替换括号
+                str_input=re.sub(r'[\)\]\}）】｝]', ']', str_input)#替换反括号
+                if str_input[0] != "[":
+                    str_input = "[" + str_input + "]"
             str_input = re.sub(r'[^\d,.\-[\]]', '', str_input)#去除非数字字符，但不包括,.-[]
             str_input = re.sub(r'(?<![0-9])[,]', '', str_input)#如果,前面不是数字则去除
             #str_input = re.sub(r'(-{2,}|\.{2,})', '', str_input)#去除多余的.和-
@@ -58,6 +63,6 @@ class str_edit:
                 return list1.tolist()
             else:
                 return str_input
-            
-    def repair_brackets(cls,str_input):#括号补全(待开发)
-        pass
+    @classmethod 
+    def list_to_str(cls,str_list:list):
+        return f"{str_list}"[1:-1].replace("'","")

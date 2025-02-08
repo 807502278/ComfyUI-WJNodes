@@ -74,8 +74,3 @@ NODE_CLASS_MAPPINGS = {
     #"load_model_value": load_model_value,
     #"sort_images_batch": sort_images_batch,
 }
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    #"load_model_value": "load model value",
-    #"sort_images_batch": "sort images batch",
-}

@@ -12,61 +12,14 @@ import json
 
 import folder_paths
 import node_helpers
-
-# Retrieve the list of devices recognized by Torch and default devices 
-# 获取torch识别到的设备列表和默认设备
-def get_device_list():
-    device_str = ["default", "cpu"]
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            device_str.append(f"cuda:{i}")
-    if torch.backends.mps.is_available():
-        device_str.append("mps:0")
-    n = len(device_str)
-    if n > 2:  # default device 默认设备
-        device_default = torch.device(device_str[2])
-    else:
-        device_default = torch.device(device_str[1])
-
-    # Establish a device list dictionary 建立设备列表字典
-    device_list = {device_str[0]: device_default, }
-    for i in range(n-1):
-        device_list[device_str[i+1]] = torch.device(device_str[i+1])
-
-    return [device_list, device_default]
-
-device_list, device_default = get_device_list()
-
-
-def tensor_to_pil(image):  # Tensor to PIL
-    return Image.fromarray(
-        np.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
-
-
-def pil_to_tensor(image):  # PIL to Tensor
-    return torch.from_numpy(
-        np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
-
-
-def pil_to_mask(image):  # PIL to Mask
-    image_np = np.array(image.convert("L")).astype(np.float32) / 255.0
-    mask = torch.from_numpy(image_np)
-    return 1.0 - mask
-
-
-def mask_to_pil(mask):  # Mask to PIL
-    if mask.ndim > 2:
-        mask = mask.squeeze(0)
-    mask_np = mask.cpu().numpy().astype('uint8')
-    mask_pil = Image.fromarray(mask_np, mode="L")
-    return mask_pil
+from ..moduel.image_utils import device_list, device_default
 
 
 # ------------------image load/save nodes--------------------
 CATEGORY_NAME = "WJNode/Image"
 
 
-class LoadImageFromPath:
+class Load_Image_From_Path:
     """
     按路径加载图片
     """
@@ -105,7 +58,7 @@ class LoadImageFromPath:
         return (image, mask)
 
 
-class LoadImageAdv:
+class Load_Image_Adv:
     DESCRIPTION = """
         A load - image node with image - path output and flipped mask.
         带图片路径输出和翻转遮罩的加载图片节点
@@ -186,7 +139,7 @@ class LoadImageAdv:
         return (output_image, output_mask, image_path)
 
 
-class SaveImageToPath:
+class Save_Image_To_Path:
     """
 
     """
@@ -200,42 +153,31 @@ class SaveImageToPath:
     def INPUT_TYPES(s):
         return {"required":
                 {"images": ("IMAGE",),
-                 "file_path": ("STRING", {"multiline": True,
-                                          "default": "",
-                                          "dynamicPrompts": False}),
+                 "file_path": ("STRING", {"multiline": True,"default": "","dynamicPrompts": False}),
                  },
-                "hidden": {"prompt": "PROMPT",
-                           "extra_pnginfo": "EXTRA_PNGINFO"},
-
                 }
 
     CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "STRING")
-    RETURN_NAMES = ("IMAGE1", "PATH1")
-    # OUTPUT_IS_LIST = (True,)
+    RETURN_NAMES = ("IMAGE", "PATH")
     FUNCTION = "save_images"
     OUTPUT_NODE = True
 
-    def save_images(self, images, file_path, prompt=None, extra_pnginfo=None):
+    def save_images(self, images, file_path):
         file_path1 = copy.deepcopy(file_path)
         filename_prefix = os.path.basename(file_path)
         if file_path == '':
             filename_prefix = "ComfyUI"
         filename_prefix, _ = os.path.splitext(filename_prefix)
         _, extension = os.path.splitext(file_path)
-        if extension:
-            # 是文件名，需要处理
-            file_path = os.path.dirname(file_path)
-        # filename_prefix=
+
+        # 是文件名，需要处理
+        if extension: file_path = os.path.dirname(file_path)
+
         full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(
             filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
 
-        if not os.path.exists(file_path):
-            # 使用os.makedirs函数创建新目录
-            os.makedirs(file_path)
-            print("目录已创建")
-        else:
-            print("目录已存在")
+        if not os.path.exists(file_path): os.makedirs(file_path)
 
         results = list()
         for image in images:
@@ -261,7 +203,7 @@ class SaveImageToPath:
         return (images, file_path1)
 
 
-class SaveImageOut:
+class Save_Image_Out:
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
         self.type = "output"
@@ -273,16 +215,15 @@ class SaveImageOut:
         return {"required":
                 {"images": ("IMAGE", ),
                  "filename_prefix": ("STRING", {"default": "ComfyUI"})},
-                "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
                 }
 
     CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "STRING")
-    RETURN_NAMES = ("IMAGE1", "PATH1")
+    RETURN_NAMES = ("IMAGE", "PATH")
     FUNCTION = "save_images"
     OUTPUT_NODE = True
 
-    def save_images(self, images, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None):
+    def save_images(self, images, filename_prefix="ComfyUI"):
         # images1=copy.deepcopy(images)
         filename_prefix += self.prefix_append
         full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(
@@ -681,8 +622,9 @@ class invert_channel_adv: #
                 "G": ("MASK",),
                 "B": ("MASK",),
                 "A": ("MASK",),
-            }
+            },
         }
+    
     CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "MASK", "MASK", "MASK", "MASK", "MASK")
     RETURN_NAMES = ("RGBA", "RGB", "R", "G", "B", "A", "RGB_Bath", "RGBA_Bath")
@@ -903,7 +845,7 @@ class merge_image_list:  # 待开发
     #    return flat_arr
 
 
-class BilateralFilter:
+class Bilateral_Filter:
     DESCRIPTION = """
     Image/Mask Bilateral Filtering: Can repair layered distortion caused by color or brightness scaling in images
     CV2 module is required during runtime
@@ -952,34 +894,34 @@ class BilateralFilter:
             if shape[0] > 1 :
                 image_batch = []
                 for i in image:
-                    image_batch.append(self.bilateralFilter(i,diameter,sigma_color,sigma_space).unsqueeze(0))
+                    image_batch.append(self.Bilateral_Filter(i,diameter,sigma_color,sigma_space).unsqueeze(0))
                 image = torch.cat(image_batch,dim=0)
             else:
-                image = self.bilateralFilter(image[0],diameter,sigma_color,sigma_space).unsqueeze(0)
+                image = self.Bilateral_Filter(image[0],diameter,sigma_color,sigma_space).unsqueeze(0)
         elif shape[-1] == 4 :
             if shape[0] > 1 :
                 image_batch = []
                 for i in image:
-                    image_batch.append(self.bilateralFilter_RGBA(i,diameter,sigma_color,sigma_space).unsqueeze(0))
+                    image_batch.append(self.Bilateral_Filter_RGBA(i,diameter,sigma_color,sigma_space).unsqueeze(0))
                 image = torch.cat(image_batch,dim=0)
             else:
-                image = self.bilateralFilter_RGBA(image[0],diameter,sigma_color,sigma_space).unsqueeze(0)
+                image = self.Bilateral_Filter_RGBA(image[0],diameter,sigma_color,sigma_space).unsqueeze(0)
         else:
             print("Error: The input is not standard image data, and the original data will be returned !")
         return image
     
-    def bilateralFilter(self,image,diameter,sigma_color,sigma_space):
+    def Bilateral_Filter(self,image,diameter,sigma_color,sigma_space):
         import cv2
         image = np.array(image * 255).astype('uint8')
-        image = cv2.bilateralFilter(image, diameter, sigma_color, sigma_space)
+        image = cv2.Bilateral_Filter(image, diameter, sigma_color, sigma_space)
         image = torch.tensor(image).float()/255
         return image
-    def bilateralFilter_RGBA(self,image,diameter,sigma_color,sigma_space):
+    def Bilateral_Filter_RGBA(self,image,diameter,sigma_color,sigma_space):
         import cv2
         image = np.array(image[...,:-1] * 255).astype('uint8')
         image_A = np.array(image[...,-1:].squeeze(-1) * 255).astype('uint8')
-        image = cv2.bilateralFilter(image, diameter, sigma_color, sigma_space)
-        image_A = cv2.bilateralFilter(image_A, diameter, sigma_color, sigma_space)
+        image = cv2.Bilateral_Filter(image, diameter, sigma_color, sigma_space)
+        image_A = cv2.Bilateral_Filter(image_A, diameter, sigma_color, sigma_space)
         image = torch.cat((torch.tensor(image),torch.tensor(image_A).unsqueeze(-1)),dim=-1).float()/255
         return image
 
@@ -1153,41 +1095,21 @@ class SaveImage1: #参考
 
 NODE_CLASS_MAPPINGS = {
     #WJNode/Image
-    "LoadImageFromPath": LoadImageFromPath,
-    "SaveImageToPath": SaveImageToPath,
-    "SaveImageOut": SaveImageOut,
-    "LoadImageAdv": LoadImageAdv,
+    "Load_Image_From_Path": Load_Image_From_Path,
+    "Save_Image_To_Path": Save_Image_To_Path,
+    "Save_Image_Out": Save_Image_Out,
+    "Load_Image_Adv": Load_Image_Adv,
 
     #WJNode/ImageEdit
-    "AdvCrop": adv_crop,
-    "InvertChannelAdv": invert_channel_adv,
+    "adv_crop": adv_crop,
+    "invert_channel_adv": invert_channel_adv,
     # "ToImageListData": to_image_list_data,
     # "MergeImageList": merge_image_list,
     # "ImageChannelBus": image_channel_bus,
     # "RGBABatchToImage": RGBABatch_to_image,
-    "BilateralFilter": BilateralFilter,
+    "Bilateral_Filter": Bilateral_Filter,
 
     #WJNode/video
     "Video_OverlappingSeparation_test": Video_OverlappingSeparation_test,
-    "VideoFade": Video_fade,
-}
-NODE_DISPLAY_NAME_MAPPINGS = {
-    #WJNode/Image
-    "LoadImageFromPath": "Load Image From Path",
-    "SaveImageToPath": "Save Image To Path",
-    "SaveImageOut": "Save Image Out",
-    "LoadImageAdv": "Load Image Adv",
-
-    #WJNode/ImageEdit
-    "AdvCrop": "Adv Crop",
-    "InvertChannelAdv": "Invert Channel Adv",
-    #"ToImageListData": "To Image List Data",
-    #"MergeImageList": "Merge Image List",
-    # "ImageChannelBus": "Image Channel Bus",
-    # "RGBABatchToImage": "RGBA Batch To Image",
-    "BilateralFilter": "Bilateral Filter",
-
-    #WJNode/video
-    "Video_OverlappingSeparation_test": "Video OverlappingSeparation test",
-    "VideoFade": "Video Fade",
+    "Video_Fade": Video_fade,
 }

@@ -1,0 +1,744 @@
+{
+  "last_node_id": 37,
+  "last_link_id": 75,
+  "nodes": [
+    {
+      "id": 6,
+      "type": "Image Color Palette",
+      "pos": [
+        -775.5338134765625,
+        -434.2015075683594
+      ],
+      "size": [
+        210,
+        102
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6,
+          "label": "image"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0,
+          "shape": 3,
+          "label": "image"
+        },
+        {
+          "name": "color_palettes",
+          "type": "LIST",
+          "links": [
+            49
+          ],
+          "slot_index": 1,
+          "shape": 3,
+          "label": "color_palettes"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Image Color Palette"
+      },
+      "widgets_values": [
+        8,
+        "Chart"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "LoadImage",
+      "pos": [
+        -1128.46630859375,
+        -434.2346496582031
+      ],
+      "size": [
+        315,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0,
+          "shape": 3,
+          "label": "IMAGE"
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "shape": 3,
+          "label": "MASK"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "256x256-RGBA.png",
+        "image"
+      ]
+    },
+    {
+      "id": 23,
+      "type": "Random_Select_Prompt",
+      "pos": [
+        63.08478546142578,
+        -782.6110229492188
+      ],
+      "size": [
+        294.9903564453125,
+        179
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "Prompt",
+          "type": "STRING",
+          "link": 48,
+          "widget": {
+            "name": "Prompt"
+          },
+          "label": "Prompt"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Prompt",
+          "type": "STRING",
+          "links": [
+            72
+          ],
+          "slot_index": 0,
+          "label": "Prompt"
+        },
+        {
+          "name": "Prompt_list",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 1,
+          "label": "Prompt_list"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Random_Select_Prompt"
+      },
+      "widgets_values": [
+        "",
+        18,
+        false,
+        false,
+        true,
+        1361,
+        [
+          false,
+          true
+        ]
+      ]
+    },
+    {
+      "id": 25,
+      "type": "load_ColorName_config",
+      "pos": [
+        -878.581298828125,
+        -750.49609375
+      ],
+      "size": [
+        315,
+        102
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "Color_data_select",
+          "type": "DICT",
+          "links": [
+            46,
+            68
+          ],
+          "slot_index": 0,
+          "label": "Color_data_select"
+        },
+        {
+          "name": "Color_data_excluded",
+          "type": "DICT",
+          "links": [],
+          "slot_index": 1,
+          "label": "Color_data_excluded"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "load_ColorName_config"
+      },
+      "widgets_values": [
+        "color_name_default_v3.json",
+        "Common"
+      ]
+    },
+    {
+      "id": 31,
+      "type": "Color_check_Name",
+      "pos": [
+        -390.54779052734375,
+        -752.8649291992188
+      ],
+      "size": [
+        269.0508728027344,
+        146
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "Color_data",
+          "type": "DICT",
+          "link": 46,
+          "label": "Color_data"
+        },
+        {
+          "name": "color_value1",
+          "type": "LIST",
+          "link": 49,
+          "shape": 7,
+          "label": "color_value1"
+        },
+        {
+          "name": "color_value2",
+          "type": "STRINT",
+          "link": null,
+          "shape": 7,
+          "label": "color_value2"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Color_data",
+          "type": "DICT",
+          "links": [
+            75
+          ],
+          "slot_index": 0,
+          "label": "Color_data"
+        },
+        {
+          "name": "Color_data_exclude",
+          "type": "DICT",
+          "links": [],
+          "slot_index": 1,
+          "label": "Color_data_exclude"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Color_check_Name"
+      },
+      "widgets_values": [
+        "HEX",
+        "RGB_distance",
+        0.012
+      ]
+    },
+    {
+      "id": 32,
+      "type": "Color_Data_Break",
+      "pos": [
+        -380.78961181640625,
+        -963.4414672851562
+      ],
+      "size": [
+        256.8865966796875,
+        122
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "Color_data",
+          "type": "DICT",
+          "link": 75,
+          "label": "Color_data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ColorPrompt",
+          "type": "STRING",
+          "links": [
+            48,
+            73
+          ],
+          "slot_index": 0,
+          "label": "ColorPrompt"
+        },
+        {
+          "name": "PromptList",
+          "type": "LIST",
+          "links": [],
+          "slot_index": 1,
+          "label": "PromptList"
+        },
+        {
+          "name": "Colorlist",
+          "type": "LIST",
+          "links": [],
+          "slot_index": 2,
+          "label": "Colorlist"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Color_Data_Break"
+      },
+      "widgets_values": [
+        "RGB",
+        "Name_EN"
+      ]
+    },
+    {
+      "id": 33,
+      "type": "Show any [Crystools]",
+      "pos": [
+        -415.7853088378906,
+        -1385.4752197265625
+      ],
+      "size": [
+        352.9565734863281,
+        321.9059143066406
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "any_value",
+          "type": "*",
+          "link": 73,
+          "shape": 7,
+          "label": "any_value"
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Show any [Crystools]"
+      }
+    },
+    {
+      "id": 35,
+      "type": "Show any [Crystools]",
+      "pos": [
+        -914.3244018554688,
+        -1385.2113037109375
+      ],
+      "size": [
+        352.9565734863281,
+        321.9059143066406
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "any_value",
+          "type": "*",
+          "link": 65,
+          "shape": 7,
+          "label": "any_value"
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Show any [Crystools]"
+      }
+    },
+    {
+      "id": 36,
+      "type": "Color_Data_Break",
+      "pos": [
+        -829.4390258789062,
+        -945.9915771484375
+      ],
+      "size": [
+        256.8865966796875,
+        122
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "Color_data",
+          "type": "DICT",
+          "link": 68,
+          "label": "Color_data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ColorPrompt",
+          "type": "STRING",
+          "links": [
+            65
+          ],
+          "slot_index": 0,
+          "label": "ColorPrompt"
+        },
+        {
+          "name": "PromptList",
+          "type": "LIST",
+          "links": [],
+          "slot_index": 1,
+          "label": "PromptList"
+        },
+        {
+          "name": "Colorlist",
+          "type": "LIST",
+          "links": [],
+          "slot_index": 2,
+          "label": "Colorlist"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Color_Data_Break"
+      },
+      "widgets_values": [
+        "RGB",
+        "Name_CH"
+      ]
+    },
+    {
+      "id": 37,
+      "type": "Show any [Crystools]",
+      "pos": [
+        60.66563034057617,
+        -1381.55517578125
+      ],
+      "size": [
+        352.9565734863281,
+        321.9059143066406
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "any_value",
+          "type": "*",
+          "link": 72,
+          "shape": 7,
+          "label": "any_value"
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "Show any [Crystools]"
+      }
+    }
+  ],
+  "links": [
+    [
+      6,
+      7,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      46,
+      25,
+      0,
+      31,
+      0,
+      "DICT"
+    ],
+    [
+      48,
+      32,
+      0,
+      23,
+      0,
+      "STRING"
+    ],
+    [
+      49,
+      6,
+      1,
+      31,
+      1,
+      "LIST"
+    ],
+    [
+      65,
+      36,
+      0,
+      35,
+      0,
+      "*"
+    ],
+    [
+      68,
+      25,
+      0,
+      36,
+      0,
+      "DICT"
+    ],
+    [
+      72,
+      23,
+      0,
+      37,
+      0,
+      "*"
+    ],
+    [
+      73,
+      32,
+      0,
+      33,
+      0,
+      "*"
+    ],
+    [
+      75,
+      31,
+      0,
+      32,
+      0,
+      "DICT"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "获取颜色 (was插件)",
+      "bounding": [
+        -1138.46630859375,
+        -507.83453369140625,
+        582.93212890625,
+        397.6000061035156
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "加载颜色数据配置",
+      "bounding": [
+        -924.3244018554688,
+        -1458.811279296875,
+        372.95660400390625,
+        820.315185546875
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "随机选颜色",
+      "bounding": [
+        50.66563034057617,
+        -1478.7947998046875,
+        372.9565734863281,
+        885.1837768554688
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "按色彩空间距离选择近似颜色",
+      "bounding": [
+        -425.7853088378906,
+        -1459.0751953125,
+        372.9565734863281,
+        862.2102661132812
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5730855330116844,
+      "offset": [
+        2517.7795020446174,
+        1792.3155195139643
+      ]
+    },
+    "ue_links": [],
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0
+  },
+  "version": 0.4,
+  "api_prompt": {
+    "6": {
+      "inputs": {
+        "colors": 8,
+        "mode": "Chart",
+        "image": [
+          "7",
+          0
+        ]
+      },
+      "class_type": "Image Color Palette",
+      "_meta": {
+        "title": "Image Color Palette"
+      }
+    },
+    "7": {
+      "inputs": {
+        "image": "256x256-RGBA.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "加载图像"
+      }
+    },
+    "23": {
+      "inputs": {
+        "Prompt": [
+          "32",
+          0
+        ],
+        "select_number": 18,
+        "Original_data_deduplication": false,
+        "allow_duplicates": false,
+        "keep_order": true,
+        "random_seed": 1361
+      },
+      "class_type": "Random_Select_Prompt",
+      "_meta": {
+        "title": "Random Select Prompt"
+      }
+    },
+    "25": {
+      "inputs": {
+        "config_file": "color_name_default_v3.json",
+        "filter_class": "Common"
+      },
+      "class_type": "load_ColorName_config",
+      "_meta": {
+        "title": "load ColorName config"
+      }
+    },
+    "31": {
+      "inputs": {
+        "Color_InputType": "HEX",
+        "method": "RGB_distance",
+        "threshold": 0.012,
+        "Color_data": [
+          "25",
+          0
+        ],
+        "color_value1": [
+          "6",
+          1
+        ]
+      },
+      "class_type": "Color_check_Name",
+      "_meta": {
+        "title": "Color check Name"
+      }
+    },
+    "32": {
+      "inputs": {
+        "Color_OutputType": "RGB",
+        "output_language": "Name_EN",
+        "Color_data": [
+          "31",
+          0
+        ]
+      },
+      "class_type": "Color_Data_Break",
+      "_meta": {
+        "title": "Color Data Break"
+      }
+    },
+    "33": {
+      "inputs": {
+        "console": false,
+        "display": true,
+        "prefix": "",
+        "any_value": [
+          "32",
+          0
+        ]
+      },
+      "class_type": "Show any [Crystools]",
+      "_meta": {
+        "title": "🪛 Show any value to console/display"
+      }
+    },
+    "35": {
+      "inputs": {
+        "console": false,
+        "display": true,
+        "prefix": "",
+        "any_value": [
+          "36",
+          0
+        ]
+      },
+      "class_type": "Show any [Crystools]",
+      "_meta": {
+        "title": "🪛 Show any value to console/display"
+      }
+    },
+    "36": {
+      "inputs": {
+        "Color_OutputType": "RGB",
+        "output_language": "Name_CH",
+        "Color_data": [
+          "25",
+          0
+        ]
+      },
+      "class_type": "Color_Data_Break",
+      "_meta": {
+        "title": "Color Data Break"
+      }
+    },
+    "37": {
+      "inputs": {
+        "console": false,
+        "display": true,
+        "prefix": "",
+        "any_value": [
+          "23",
+          0
+        ]
+      },
+      "class_type": "Show any [Crystools]",
+      "_meta": {
+        "title": "🪛 Show any value to console/display"
+      }
+    }
+  }
+}

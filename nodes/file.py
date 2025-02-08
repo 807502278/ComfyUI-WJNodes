@@ -20,7 +20,7 @@ any = AnyType("*")
 CATEGORY_NAME_WJnode = "WJNode/Path"
 
 
-class Path_Out:
+class ComfyUI_Path_Out:
     DESCRIPTION = """
         Common paths for outputting ComfyUI 
             (root, output/input, plugin, model, cache, Python environment)
@@ -122,7 +122,7 @@ class del_file:
         return (Signal, exists, is_file)
 
 
-class SplitPath:
+class Split_Path:
     DESCRIPTION = """
         Detect whether a file or folder exists.
         If "Deletes" is enabled, delete it after detection. Use with caution.\n
@@ -173,18 +173,11 @@ class PrimitiveNode1:  # test node for the primitive node system
 
 
 NODE_CLASS_MAPPINGS = {
-    "ComfyUIPath": Path_Out,
-    "PathAppend": Str_Append,
-    "SplitPath": SplitPath,
+    "ComfyUI_Path_Out": ComfyUI_Path_Out,
+    "Str_Append": Str_Append,
+    "Split_Path": Split_Path,
     # "PrimitiveNode": PrimitiveNode1
-}
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "ComfyUIPath": "ComfyUI Path1",
-    "PathAppend": "Str Append",
-    "SplitPath": "Split Path",
-    # "PrimitiveNode": "Primitive Node1"
 }
 
 if DelFile:
-    NODE_CLASS_MAPPINGS["DelFile"] = del_file
-    NODE_DISPLAY_NAME_MAPPINGS["DelFile"] = "Delete File"
+    NODE_CLASS_MAPPINGS["del_file"] = del_file
