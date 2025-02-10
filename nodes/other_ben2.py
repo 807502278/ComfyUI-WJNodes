@@ -81,6 +81,6 @@ class Run_BEN_v2:
 
 # Export mappings for ComfyUI
 NODE_CLASS_MAPPINGS = {
-    "load_BEN_model": load_BEN_model,
-    "Run_BEN_v2": Run_BEN_v2
+    #"load_BEN_model": load_BEN_model,
+    #"Run_BEN_v2": Run_BEN_v2
 }
