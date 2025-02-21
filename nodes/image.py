@@ -925,6 +925,230 @@ class Bilateral_Filter:
         image = torch.cat((torch.tensor(image),torch.tensor(image_A).unsqueeze(-1)),dim=-1).float()/255
         return image
 
+
+class image_math:
+    DESCRIPTION = """
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "operation":(["-","+","*","&"],{"default":"-"}),
+                "algorithm":(["cv2","torch"],{"default":"cv2"}),
+                "invert1":("BOOLEAN",{"default":False}),
+                "invert2":("BOOLEAN",{"default":False}),
+            },
+            "optional": {
+                "image1":("IMAGE",),
+                "image2":("IMAGE",),
+                "mask1":("MASK",),
+                "mask2":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","MASK")
+    FUNCTION = "image_math"
+    def image_math(self, operation, algorithm, invert1, invert2,
+                    mask1=None, mask2=None, image1=None, image2=None):
+        mask,image = None,None
+
+        #invert mask
+        mask1, image1 = self.invert([mask1, image1],invert1)
+        mask2, image2 = self.invert([mask2, image2],invert2)
+
+        #统一数量
+        mask1, mask2 = self.repeat_mask(mask1, mask2)
+        image1, image2 = self.repeat_mask(image1, image2)
+
+        #check cv2
+        if algorithm == "cv2":
+            try: import cv2
+            except:
+                print("prompt-mask_and_mask_math: cv2 is not installed, Using Torch")
+                print("prompt-mask_and_mask_math: cv2 未安装, 使用torch")
+                algorithm = "torch"
+
+        #如果mask只输入一个，则输出这个
+        if mask1 is None:
+            if mask2 is None: pass
+            else: mask = mask2
+        else :
+            if mask2 is None: mask = mask1
+            else: mask = self.math(algorithm,operation,mask1,mask2)[0]
+
+        #如果image只输入一个，则输出这个
+        if image1 is None:
+            if image2 is None: pass
+            else: image = image2
+        else:
+            if image2 is None: image = image1
+            else: image = self.math(algorithm,operation,image1,image2)[0]
+
+        return (mask,image)
+    
+    #批量翻转
+    def invert(self,data,inv):
+        if isinstance(data,list):
+            data = [i for i in data if inv and data is not None]
+        else:
+            if inv and data is not None:
+                data = 1-data
+        return data
+
+    #某个输入为单张时统一数量
+    def repeat_mask(self,mask1,mask2):
+        if mask1.shape[0] == 1 and mask2.shape[0] != 1:
+            mask1 = mask1.repeat(mask2.shape[0],1,1)
+        elif mask1.shape[0] != 1 and mask2.shape[0] == 1:
+            mask2 = mask2.repeat(mask1.shape[0],1,1)
+        return mask1,mask2
+
+    #按模式调用计算
+    def math(self,algorithm,operation,mask1,mask2):
+        #algorithm
+        if algorithm == "cv2":
+            if operation == "-":
+                return (self.subtract_masks(mask1, mask2),)
+            elif operation == "+":
+                return (self.add_masks(mask1, mask2),)
+            elif operation == "*":
+                return (self.multiply_masks(mask1, mask2),)
+            elif operation == "&":
+                return (self.and_masks(mask1, mask2),)
+        elif algorithm == "torch":
+            if operation == "-":
+                return (torch.clamp(mask1 - mask2, min=0, max=1),)
+            elif operation == "+":
+                return (torch.clamp(mask1 + mask2, min=0, max=1),)
+            elif operation == "*":
+                return (torch.clamp(mask1 * mask2, min=0, max=1),)
+            elif operation == "&":
+                mask1 = torch.round(mask1).bool()
+                mask2 = torch.round(mask2).bool()
+                return (mask1 & mask2, )
+
+    #4种计算
+    def subtract_masks(self, mask1, mask2):
+        mask1 = mask1.cpu()
+        mask2 = mask2.cpu()
+        cv2_mask1 = np.array(mask1) * 255
+        cv2_mask2 = np.array(mask2) * 255
+        import cv2
+        if cv2_mask1.shape == cv2_mask2.shape:
+            cv2_mask = cv2.subtract(cv2_mask1, cv2_mask2)
+            return torch.clamp(torch.from_numpy(cv2_mask) / 255.0, min=0, max=1)
+        else:
+            # do nothing - incompatible mask shape: mostly empty mask
+            print("Warning-mask_math: The two masks have different shapes")
+            return mask1
+
+    def add_masks(self, mask1, mask2):
+        mask1 = mask1.cpu()
+        mask2 = mask2.cpu()
+        cv2_mask1 = np.array(mask1) * 255
+        cv2_mask2 = np.array(mask2) * 255
+        import cv2
+        if cv2_mask1.shape == cv2_mask2.shape:
+            cv2_mask = cv2.add(cv2_mask1, cv2_mask2)
+            return torch.clamp(torch.from_numpy(cv2_mask) / 255.0, min=0, max=1)
+        else:
+            # do nothing - incompatible mask shape: mostly empty mask
+            print("Warning-mask_math: The two masks have different shapes")
+            return mask1
+    
+    def multiply_masks(self, mask1, mask2):
+        mask1 = mask1.cpu()
+        mask2 = mask2.cpu()
+        cv2_mask1 = np.array(mask1) * 255
+        cv2_mask2 = np.array(mask2) * 255
+        import cv2
+        if cv2_mask1.shape == cv2_mask2.shape:
+            cv2_mask = cv2.multiply(cv2_mask1, cv2_mask2)
+            return torch.clamp(torch.from_numpy(cv2_mask) / 255.0, min=0, max=1)
+        else:
+            # do nothing - incompatible mask shape: mostly empty mask
+            print("Warning-mask_math: The two masks have different shapes")
+            return mask1
+    
+    def and_masks(self, mask1, mask2):
+        mask1 = mask1.cpu()
+        mask2 = mask2.cpu()
+        cv2_mask1 = np.array(mask1)
+        cv2_mask2 = np.array(mask2)
+        import cv2
+        if cv2_mask1.shape == cv2_mask2.shape:
+            cv2_mask = cv2.bitwise_and(cv2_mask1, cv2_mask2)
+            return torch.from_numpy(cv2_mask)
+        else:
+            # do nothing - incompatible mask shape: mostly empty mask
+            print("Warning-mask_math: The two masks have different shapes")
+            return mask1
+
+
+class image_math_value:
+    DESCRIPTION = """
+    expression: expression
+    clamp: If you want to continue with the next image_math_ralue, 
+            it is recommended not to open it
+    Explanation: The A channel of the image will be automatically removed, 
+            and the shape will be the data shape
+
+    expression:表达式
+    clamp:如果要继续进行下一次image_math_value建议不打开
+    说明：会自动去掉image的A通道，shape为数据形状
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "expression":("STRING",{"default":"a+b","multiline": True}),
+                "clamp":("BOOLEAN",{"default":True}),
+            },
+            "optional": {
+                "a":("IMAGE",),
+                "b":("IMAGE",),
+                "c":("MASK",),
+                "d":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","MASK","LIST")
+    RETURN_NAMES = ("image","mask","shape")
+    FUNCTION = "image_math"
+    def image_math(self,expression,clamp,
+                   a=None, b=None, c=None, d=None):
+        image = None
+        mask = None
+        s = 0
+        #去掉A通道
+        if a is not None:
+            if a.shape[-1] == 4: a = a[...,0:-1]
+        if b is not None:
+            if b.shape[-1] == 4: b = b[...,0:-1]
+
+        #单张批次对齐
+        #pass
+
+        #遮罩转3通道
+        if c is not None:
+            c = c.unsqueeze(-1).repeat(1, 1, 1, 3)
+        if d is not None:
+            d = d.unsqueeze(-1).repeat(1, 1, 1, 3)
+
+        try:
+            local_vars = locals().copy()
+            exec(f"image = {expression}", {}, local_vars)
+            image = local_vars.get("image")
+        except:
+            print("Warning: Invalid expression !, will output null value.")
+
+        if image is not None:
+            if clamp: image = torch.clamp(image, 0.0, 1.0)
+            s = list(image.shape)
+            mask = torch.mean(image, dim=3, keepdim=False)
+        return (image,mask,s)
+
+
 # ------------------video nodes--------------------
 CATEGORY_NAME = "WJNode/video"
 
@@ -1108,6 +1332,9 @@ NODE_CLASS_MAPPINGS = {
     # "ImageChannelBus": image_channel_bus,
     # "RGBABatchToImage": RGBABatch_to_image,
     "Bilateral_Filter": Bilateral_Filter,
+    #"image_math": image_math,
+    "image_math_value": image_math_value,
+
 
     #WJNode/video
     "Video_OverlappingSeparation_test": Video_OverlappingSeparation_test,
