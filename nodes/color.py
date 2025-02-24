@@ -403,13 +403,10 @@ class color_segmentation_v2:
         运行单张图像颜色分割
         """
         mask = self.color_to_mask(image, Color_list, skip_threshold)  # 将颜色转换为遮罩
-        print(f"*****转遮罩：{mask.shape}")
-
         if select_mask is not None:  # 如果有选择遮罩
             mask = self.select_mask(mask, select_mask, invert_select_mask, invert_select)  # 选择遮罩
         if merge_mask:  # 如果需要合并遮罩
             mask = self.merge_maks(mask)  # 合并遮罩
-            print(f"*****合并遮罩{mask.shape}")
         return mask
 
     def color_to_mask(self, image, Color_list, skip_threshold):
