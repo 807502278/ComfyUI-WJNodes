@@ -286,7 +286,7 @@ class color_segmentation_v2:
     2：部分批次没有查找到颜色时，对应顺序输出黑色，其它正常
     3：合并遮罩merge_mask在输入为批次时，即使关闭也默认开启
     4：选择遮罩select_mask功能目前仅支持单张,不支持批次
-    
+
     Function:
     1: Used to batch convert SEG color block class output images into masks
         Support tag filtering within input configuration files, 
@@ -403,13 +403,10 @@ class color_segmentation_v2:
         运行单张图像颜色分割
         """
         mask = self.color_to_mask(image, Color_list, skip_threshold)  # 将颜色转换为遮罩
-        print(f"*****转遮罩：{mask.shape}")
-
         if select_mask is not None:  # 如果有选择遮罩
             mask = self.select_mask(mask, select_mask, invert_select_mask, invert_select)  # 选择遮罩
         if merge_mask:  # 如果需要合并遮罩
             mask = self.merge_maks(mask)  # 合并遮罩
-            print(f"*****合并遮罩{mask.shape}")
         return mask
 
     def color_to_mask(self, image, Color_list, skip_threshold):
@@ -790,10 +787,9 @@ class Name_check_Color: #待开发
     def check(self,Color_data,color_value):
         pass
 
+
 class ColorData_HSV_Selection: #待开发
     ...
-
-
 
 
 NODE_CLASS_MAPPINGS = {

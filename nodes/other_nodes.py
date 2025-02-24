@@ -313,16 +313,15 @@ class Batch_Average: #开发中
 
 class Mask_Detection:
     DESCRIPTION = """
-    Input mask and perform duplicate detection:
-        1: Whether it exists.
-        2: Whether it is a hard edge (binary value).
-        3: Whether it is an all-white mask.
-        4: Whether it is an all-black mask.
-        5: Is it a grayscale mask
-        6: Output color value (output 0 when mask is not monochrome)
 
-    输入mask,使用去重检测：
-        1:是否存在
+    说明：
+        输入mask或image,使用去重检测遮罩属性
+        若mask或image都输入，默认检测image
+
+    输入：
+        1:Exist_threshold判断遮罩是否存在的阈值，
+    输出：
+        1:遮罩是否存在(非纯色)
         2:是否为硬边缘(二值)
         3:是否为全白遮罩
         4:是否为全黑遮罩
@@ -334,8 +333,15 @@ class Mask_Detection:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "mask": ("MASK",),
-            },
+                "accuracy": ("INT", {"default": 255, "min": 2, "max": 255, 
+                                        "step": 1, "display": "slider"}),
+                "Exist_threshold": ("INT", {"default": 3, "min": 2, "max": 255, 
+                                        "step": 1, "display": "slider"}),
+                },
+            "optional": {
+                "image": ("IMAGE",),
+                "mask": ("MASK",)
+            }
         }
     CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("BOOLEAN", "BOOLEAN", "BOOLEAN",
@@ -344,32 +350,49 @@ class Mask_Detection:
                     "PureBlack", "PureGray", "PureColorValue")
     FUNCTION = "MaskDetection"
 
-    def MaskDetection(self, mask):
-        Exist = True
+    def MaskDetection(self, accuracy, Exist_threshold, image=None, mask=None):
+        #初始化值
+        Exist = False
         binary = False
         PureWhite = False
         PureBlack = False
         PureGray = False
-        PureColorValue = int(0)
-        data = torch.unique(mask).tolist()
+        PureColorValue = float(0)
+
+        #检测输入
+        if image is None:
+            if mask is None:
+                print("Warning: Image input is empty!")
+                return (Exist, binary, PureWhite, PureBlack, PureGray, PureColorValue)
+            else:
+                image = mask
+
+        #统计不同像素值的数量
+        image = (image*accuracy).to(torch.uint8)
+        data = torch.unique(image).tolist() #去重
         n = len(data)
-        if n == 1:
-            Exist = False
-            PureColorValue = int(round(data[0] * 255))
+
+        if n == 1: #只有一个值，是纯色不是遮罩
+            PureColorValue = data[0]
+            PureGray = True
             if data[0] == 0:
                 PureBlack = True
             elif data[0] == 1:
                 PureWhite = True
-            else:
-                PureGray = True
-        if n <= 2:
+        elif n == 2: #有2个值，是二值遮罩
+            Exist = True
             binary = True
+        elif n <=Exist_threshold: #小于自定义个值，是遮罩
+            Exist = True
+
         return (Exist, binary, PureWhite, PureBlack, PureGray, PureColorValue)
 
 
 class get_image_data:
     DESCRIPTION = """
     Obtain image data
+    If both image and mask are input at the same time, 
+        image data will be prioritized for output
     获取图像数据
     若同时输入image和mask,会优先输出image数据
     """
@@ -403,7 +426,7 @@ class get_image_data:
         return (*shape,shape,*m)
 
 
-class get_image_value:
+class get_image_value: #计算图像的值，开发中
     DESCRIPTION = """
     Obtain image data
     获取图像数据
@@ -425,21 +448,7 @@ class get_image_value:
     FUNCTION = "element_count"
 
     def element_count(self, image = None, mask = None):
-        shape = [0,0,0,0]
-        m_v = [0,0]
-        if image is None:
-            if mask is None:
-                pass
-            else:
-                shape = list(mask.shape)
-                shape.append(1)
-                m_v = [torch.max(mask, -1),torch.min(mask, -1)]
-        else:
-            shape = list(image.shape)
-            m_v = [torch.max(image, -1),torch.min(image, -1)]
-
-        m = [max(shape[1:3]),min(shape[1:3])]
-        return (*shape,shape,*m,*m_v)
+        return ()
 
 
 class get_TypeName:
