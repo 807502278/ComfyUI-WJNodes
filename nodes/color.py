@@ -276,163 +276,230 @@ class color_segmentation:
 
 class color_segmentation_v2:
     DESCRIPTION = """
+    功能：
+    1：用于将seg色块类输出图像批量转为遮罩
+        支持输入配置文件内的tag筛选，所有tag在加载配置节点可查看
+    2：使用遮罩来选择seg色块图内的对象
+        例如手绘遮罩或深度遮罩选择对象，注意输入尺寸要一致
+    说明：
+    1：单张没有查找到颜色时，输出全黑遮罩(打开invert_mask反转时全白)
+    2：部分批次没有查找到颜色时，对应顺序输出黑色，其它正常
+    3：合并遮罩merge_mask在输入为批次时，即使关闭也默认开启
+    4：选择遮罩select_mask功能目前仅支持单张,不支持批次
+    
+    Function:
+    1: Used to batch convert SEG color block class output images into masks
+        Support tag filtering within input configuration files, 
+        all tags can be viewed on the loading configuration node
+    2: Use masks to select objects within the SEG color block image
+        For example, when selecting objects for hand drawn masks or depth masks, 
+        be sure to input consistent sizes
+    explain:
+    1: When no color is found for a single sheet,
+        output a full black mask (full white when inverted with invert_mask turned on)
+    2: When no color is found in some batches, black is outputted in the corresponding order, 、
+        while others are normal
+    3: When the merge mask is input as a batch, it is enabled by default even if it is turned off
+    4: The select_mask function currently only supports single masks and does not support batches
     """
     @classmethod
     def INPUT_TYPES(s):
-        tag_mod = ["all tag","background tag","custom tag"]
+        # 定义输入参数的类型和默认值
+        tag_mod = ["all tag", "background tag", "custom tag"]
         return {
             "required": {
-                "image": ("IMAGE",),
-                "skip_threshold":("FLOAT",{"default":0.05,"min":0,"max":1,"step":0.001,"display":"slider"}),
-                "Color_dict":("DICT",),
-                "merge_mask":("BOOLEAN",{"default":False}),
-                "invert_mask":("BOOLEAN",{"default":False}),
-                "output_type":(tag_mod,{"default":tag_mod[0]}),
-                "custom_keys":("STRING",{"default":"wall,sky,floor,ceiling,windowpane,traffic","multiline": True}),
+                "image": ("IMAGE",),  # 输入图像
+                "skip_threshold": ("FLOAT", {"default": 0.05, "min": 0, "max": 1, "step": 0.001, "display": "slider"}),  # 跳过阈值
+                "Color_dict": ("DICT",),  # 颜色字典
+                "merge_mask": ("BOOLEAN", {"default": False}),  # 是否合并遮罩
+                "invert_mask": ("BOOLEAN", {"default": False}),  # 是否反转遮罩
+                "output_type": (tag_mod, {"default": tag_mod[0]}),  # 输出类型
+                "custom_keys": ("STRING", {"default": "wall,sky,floor,ceiling,windowpane,traffic", "multiline": True}),  # 自定义键
             },
             "optional": {
-                "select_mask":("MASK",),
-                "invert_select_mask":("BOOLEAN",{"default":False}),
-                "invert_select":("BOOLEAN",{"default":False})
+                "select_mask": ("MASK",),  # 选择遮罩
+                "invert_select_mask": ("BOOLEAN", {"default": False}),  # 是否反转选择遮罩
+                "invert_select": ("BOOLEAN", {"default": False})  # 是否反转选择
             }
         }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("MASK",)
-    RETURN_NAMES = ("mask",)
-    FUNCTION = "separate_color_blocks"
+    CATEGORY = CATEGORY_NAME  # 类别名称
+    RETURN_TYPES = ("MASK",)  # 返回类型
+    RETURN_NAMES = ("mask",)  # 返回名称
+    FUNCTION = "separate_color_blocks"  # 主要函数
+
     def separate_color_blocks(self, image, skip_threshold, Color_dict, merge_mask, 
                               invert_mask, invert_select_mask, invert_select, 
                               output_type, custom_keys, select_mask=None):
-        #select batch and to 3 dimensions
+        """
+        主函数：根据颜色分割图像并生成遮罩
+        """
+        # 检查颜色字典是否为空
+        if Color_dict == {}: 
+            return self.none_data(image, invert_mask)
 
-        #Empty data detection
-        if Color_dict == {}: return self.none_data(image,invert_mask)
-
+        # 根据输出类型生成颜色列表
         Color_list = []
         if output_type == "all tag":
-            Color_list = [list(Color_dict.values()),]
+            Color_list = [list(Color_dict.values()),]  # 使用所有颜色
         elif output_type == "custom tag":
-            custom_keys = self.remove_trailing_comma(custom_keys)
-            if custom_keys == "": #自定义tag为空直接返回结果
-                return self.none_data(image,invert_mask)
-            keys = re.split(r',\s*|，\s*', custom_keys)
-            if set(keys) & set(Color_dict.keys()) == set():#自定义tag无效直接返回结果
-                return self.none_data(image,invert_mask)
-            Color_list = [[Color_dict[key] for key in keys if key in Color_dict],]
+            custom_keys = self.remove_trailing_comma(custom_keys)  # 移除自定义键末尾的逗号
+            if custom_keys == "":  # 自定义键为空直接返回结果
+                return self.none_data(image, invert_mask)
+            keys = re.split(r',\s*|，\s*', custom_keys)  # 分割自定义键
+            if set(keys) & set(Color_dict.keys()) == set():  # 自定义键无效直接返回结果
+                return self.none_data(image, invert_mask)
+            Color_list = [[Color_dict[key] for key in keys if key in Color_dict],]  # 使用自定义键对应的颜色
         elif output_type == "background tag":
-            keys = ['wall','sky','floor','ceiling','windowpane','traffic','background','back']
-            Color_list = [[Color_dict[key] for key in keys if key in Color_dict],]
+            keys = ['wall', 'sky', 'floor', 'ceiling', 'windowpane', 'traffic', 'background', 'back']  # 背景键
+            Color_list = [[Color_dict[key] for key in keys if key in Color_dict],]  # 使用背景键对应的颜色
         else:
-            raise ValueError('Error:Invalid tag output mode!')
+            raise ValueError('Error:Invalid tag output mode!')  # 抛出无效输出类型异常
 
-        mask = torch.zeros((0,*image.shape[1:-1]), dtype=torch.float)
-        #select batch and to 3 dimensions
+        # 初始化遮罩
+        mask = torch.zeros((0, *image.shape[1:-1]), dtype=torch.float)
+
+        # 处理图像批次
         try:
-            n=image.shape[0]
+            n = image.shape[0]  # 获取图像批次大小
             if n != 1:
-                if len(Color_list) != n and len(Color_list) != 1:
+                if len(Color_list) != n and len(Color_list) != 1:  # 检查颜色列表与图像批次是否匹配
                     print("Error-color_segmentation_v2: The number of color_list does not match the number of images")
-                elif len(Color_list) == 1:
+                elif len(Color_list) == 1:  # 如果颜色列表只有一个元素
                     Color_list = Color_list[0]
                     for i in range(n):
-                        image_temp = image[i]
-                        mask_temp = self.run_color_segmentation(image_temp, Color_list, skip_threshold, invert_mask, select_mask, invert_select_mask, invert_select, True)
-                        mask = torch.cat((mask, mask_temp), dim=0)
+                        image_temp = image[i]  # 获取当前图像
+                        mask_temp = self.run_color_segmentation(image_temp, Color_list, skip_threshold, select_mask, invert_select_mask, invert_select, True)  # 运行颜色分割
+                        mask = torch.cat((mask, mask_temp), dim=0)  # 将结果添加到遮罩中
                 else:
                     for i in range(n):
-                        image_temp = image[i]
-                        Color_list_temp = Color_list[i]
-                        mask_temp = self.run_color_segmentation(image_temp, Color_list_temp, skip_threshold, invert_mask, select_mask, invert_select_mask, invert_select, True)
-                        mask = torch.cat((mask, mask_temp), dim=0)
+                        image_temp = image[i]  # 获取当前图像
+                        Color_list_temp = Color_list[i]  # 获取当前颜色列表
+                        mask_temp = self.run_color_segmentation(image_temp, Color_list_temp, skip_threshold, select_mask, invert_select_mask, invert_select, True)  # 运行颜色分割
+                        mask = torch.cat((mask, mask_temp), dim=0)  # 将结果添加到遮罩中
             else:
-                mask = self.run_color_segmentation(image[0], Color_list, skip_threshold, invert_mask, select_mask, invert_select_mask, invert_select, merge_mask)
+                mask = self.run_color_segmentation(image[0], Color_list, skip_threshold, select_mask, invert_select_mask, invert_select, merge_mask)  # 运行颜色分割
         except:
             print("warn-color_segmentation: The selected batch exceeds the input batch and has been changed to the 0th batch")
-            mask = self.run_color_segmentation(image[0], Color_list[0], skip_threshold, invert_mask, select_mask, invert_select_mask, invert_select, merge_mask)
+            mask = self.run_color_segmentation(image[0], Color_list[0], skip_threshold, select_mask, invert_select_mask, invert_select, merge_mask)  # 捕获异常并处理
 
-        return (mask.float(),)
-    
-    def remove_trailing_comma(self,s): # 移除字符串末尾的逗号、空格或中文逗号
-        if s.endswith((',',"，"," ")):
+        if invert_mask : 
+            if mask.dtype == torch.bool:
+                mask = (~mask).float()
+            else:
+                mask = 1.0 - mask
+
+        return (mask,)  # 返回结果
+
+    def remove_trailing_comma(self, s):
+        """
+        移除字符串末尾的逗号、空格或中文逗号
+        """
+        if s.endswith((',', "，", " ")):
             return self.remove_trailing_comma(s[:-1])
         return s
-    
-    def run_color_segmentation(self, image, Color_list, skip_threshold, invert_mask, select_mask, invert_select_mask, invert_select, merge_mask):
-        mask = self.color_to_mask(image, Color_list, skip_threshold)
-        mask = self.handle_mask(mask, invert_mask)
-        if select_mask is not None:
-            mask = self.select_mask(mask, select_mask, invert_select_mask, invert_select)
-        if merge_mask:
-            mask = self.merge_maks(mask)
-        return mask
-    
-    #color to mask
-    def color_to_mask(self, image, Color_list, skip_threshold):
-        device = image.device
-        shape = image.shape[:-1]
-        
-        skip_threshold = int(skip_threshold / 100 * shape[0] * shape[1])+1
-        image = (torch.round(image * 255)).int()
-        mask = torch.zeros([0,*shape], dtype=torch.int, device=device).bool()
-        for i in range(len(Color_list)):
-            b=False
-            mask_i = torch.zeros([0,*shape], dtype=torch.int, device=device).bool()
-            for j in range(3):
-                mask_temp = abs(image[:,:,j] - Color_list[i][j]).bool()
-                if torch.sum(~mask_temp) <= skip_threshold:
-                    b=True
-                    break
-                mask_i = torch.cat((mask_i, mask_temp.repeat(1,1,1)), dim=0)
-            if b:
-                continue
-            for j in range(2):
-                mask_i[0] = mask_i[0] | mask_i[j+1]
-            mask = torch.cat((mask, mask_i[0].repeat(1,1,1)), dim=0)
+
+    def run_color_segmentation(self, image, Color_list, skip_threshold, select_mask, invert_select_mask, invert_select, merge_mask):
+        """
+        运行单张图像颜色分割
+        """
+        mask = self.color_to_mask(image, Color_list, skip_threshold)  # 将颜色转换为遮罩
+        print(f"*****转遮罩：{mask.shape}")
+
+        if select_mask is not None:  # 如果有选择遮罩
+            mask = self.select_mask(mask, select_mask, invert_select_mask, invert_select)  # 选择遮罩
+        if merge_mask:  # 如果需要合并遮罩
+            mask = self.merge_maks(mask)  # 合并遮罩
+            print(f"*****合并遮罩{mask.shape}")
         return mask
 
-    #invert mask
-    def handle_mask(self, mask, invert, inspect=True):
-        if not invert:
-            mask = ~mask
-        if inspect:
-            new_mask = torch.zeros((0,*mask.shape[1:])).bool()
-            for i in range(mask.shape[0]):
-                if torch.sum(mask[i]) > 1:
-                    new_mask = torch.cat((new_mask, mask[i].repeat(1,1,1)), dim=0)
-        return new_mask
-    
-    #merge mask
-    def merge_maks(self, mask):
-        for i in range(len(mask)-1):
-            mask[0] = mask[0] | mask[i+1]
-        mask = mask[0].repeat(1,1,1)
+    def color_to_mask(self, image, Color_list, skip_threshold):
+        """
+        将单张图像颜色转换为遮罩批次
+        """
+        device = image.device  # 获取设备
+        shape = image.shape[:-1]  # 获取图像形状
+
+        # 计算跳过阈值
+        skip_threshold = int(skip_threshold / 100 * shape[0] * shape[1]) + 1
+        image = (torch.round(image * 255)).int()  # 将图像值四舍五入并转换为整数
+        mask = torch.zeros([0, *shape], dtype=torch.int, device=device).bool()  # 初始化遮罩
+
+        # 遍历颜色列表
+        for i in range(len(Color_list)):
+            b = False
+            mask_i = torch.zeros([0, *shape], dtype=torch.int, device=device).bool()  # 初始化当前颜色遮罩
+            for j in range(3):  # 遍历颜色通道
+                mask_temp = abs(image[:, :, j] - Color_list[i][j]).bool()  # 计算当前通道遮罩
+                if torch.sum(~mask_temp) <= skip_threshold:  # 如果当前通道遮罩的false值数量小于跳过阈值
+                    b = True
+                    break
+                else:
+                    mask_i = torch.cat((mask_i, mask_temp.repeat(1, 1, 1)), dim=0)  # 将当前通道遮罩添加到当前颜色遮罩中
+            if b:  # 如果当前颜色遮罩无效
+                continue
+            for j in range(2):  # 合并当前颜色遮罩的通道
+                mask_i[0] = mask_i[0] | mask_i[j + 1]
+            mask = torch.cat((mask, mask_i[0].repeat(1, 1, 1)), dim=0)  # 将当前颜色遮罩添加到遮罩中
+        mask = ~mask
+        if mask.shape[0] == 0:
+            mask = torch.zeros([1,*shape], dtype=torch.int, device=device)
         return mask
-    
-    #select mask
+
+    def handle_mask(self, mask, invert, inspect=True): #废弃
+        """
+        处理遮罩
+        """
+        if invert:  # 如果需要反转遮罩
+            mask = ~mask
+        #if inspect:  # 如果需要检查遮罩
+        #    new_mask = torch.zeros((0, *mask.shape[1:])).bool()  # 初始化新遮罩
+        #    for i in range(mask.shape[0]):  # 遍历遮罩
+        #        if torch.sum(mask[i]) > 1:  # 如果当前遮罩的值数量大于1
+        #            new_mask = torch.cat((new_mask, mask[i].repeat(1, 1, 1)), dim=0)  # 将当前遮罩添加到新遮罩中
+                
+        return mask
+
+    def merge_maks(self, mask):
+        """
+        合并遮罩
+        """
+        if mask.shape[0] > 1:
+            for i in range(len(mask) - 1):  # 遍历遮罩
+                mask[0] = mask[0] | mask[i + 1]  # 合并当前遮罩
+            mask = mask[0].repeat(1, 1, 1)  # 将合并后的遮罩复制到所有位置
+        return mask
+
     def select_mask(self, mask, select_mask, invert_select_mask, invert_select):
-        select_mask = torch.round(select_mask).bool()[0]
-        if invert_select_mask:
+        """
+        选择遮罩
+        """
+        select_mask = torch.round(select_mask).bool()[0]  # 将选择遮罩四舍五入并转换为布尔值
+        if invert_select_mask:  # 如果需要反转选择遮罩
             select_mask = ~select_mask
-        new_mask = torch.zeros((0,*mask.shape[1:])).bool()
-        new_mask_i = torch.zeros((0,*mask.shape[1:])).bool()
-        for i in range(mask.shape[0]):
-            mask_temp = mask[i] & select_mask
-            if torch.sum(mask_temp) > 1:
-                new_mask = torch.cat((new_mask, mask[i].repeat(1,1,1)), dim=0)
+        new_mask = torch.zeros((0, *mask.shape[1:])).bool()  # 初始化新遮罩
+        new_mask_i = torch.zeros((0, *mask.shape[1:])).bool()  # 初始化新遮罩的逆
+        for i in range(mask.shape[0]):  # 遍历遮罩
+            mask_temp = mask[i] & select_mask  # 计算当前遮罩与选择遮罩的交集
+            if torch.sum(mask_temp) > 1:  # 如果交集的值数量大于1
+                new_mask = torch.cat((new_mask, mask[i].repeat(1, 1, 1)), dim=0)  # 将当前遮罩添加到新遮罩中
             else:
-                new_mask_i = torch.cat((new_mask_i, mask[i].repeat(1,1,1)), dim=0)
-        if invert_select:
+                new_mask_i = torch.cat((new_mask_i, mask[i].repeat(1, 1, 1)), dim=0)  # 将当前遮罩添加到新遮罩的逆中
+        if invert_select:  # 如果需要反转选择
             return new_mask_i
         else:
             return new_mask
-    
-    #空数据则直接输出结果
-    def none_data(self,image,invert_mask):
+
+    def none_data(self, image, invert_mask):
+        """
+        处理空数据
+        """
         mask = None
-        if invert_mask: mask = torch.ones(image.shape[0:-1])
-        else: mask = torch.zeros(image.shape[0:-1])
+        if invert_mask:  # 如果需要反转遮罩
+            mask = torch.ones(image.shape[0:-1])
+        else:
+            mask = torch.zeros(image.shape[0:-1])
         return (mask,)
-     
+
 
 class load_ColorName_config:
     DESCRIPTION = """

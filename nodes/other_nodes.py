@@ -371,6 +371,7 @@ class get_image_data:
     DESCRIPTION = """
     Obtain image data
     获取图像数据
+    若同时输入image和mask,会优先输出image数据
     """
     @classmethod
     def INPUT_TYPES(s):
@@ -383,19 +384,62 @@ class get_image_data:
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("INT","INT","INT","INT","INT","INT")
-    RETURN_NAMES = ("N","H","W","C","max_HW","min_HW",)
+    RETURN_TYPES = ("INT","INT","INT","INT","LIST","INT","INT")
+    RETURN_NAMES = ("N","H","W","C","shape","max_HW","min_HW")
     FUNCTION = "element_count"
 
     def element_count(self, image = None, mask = None):
         shape = [0,0,0,0]
-        if mask is not None:
-            shape = list(mask.shape)
-            shape.append(1)
-        if image is not None:
+        if image is None:
+            if mask is None:
+                pass
+            else:
+                shape = list(mask.shape)
+                shape.append(1)
+        else:
             shape = list(image.shape)
+
         m = [max(shape[1:3]),min(shape[1:3])]
-        return (*shape,*m)
+        return (*shape,shape,*m)
+
+
+class get_image_value:
+    DESCRIPTION = """
+    Obtain image data
+    获取图像数据
+    若同时输入image和mask,会优先输出image数据
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+            },
+            "optional": {
+                "image":("IMAGE",),
+                "mask":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("INT","INT","INT","INT","LIST","INT","INT","FLOAT","FLOAT")
+    RETURN_NAMES = ("N","H","W","C","shape","max_HW","min_HW","max_Value","min_Value",)
+    FUNCTION = "element_count"
+
+    def element_count(self, image = None, mask = None):
+        shape = [0,0,0,0]
+        m_v = [0,0]
+        if image is None:
+            if mask is None:
+                pass
+            else:
+                shape = list(mask.shape)
+                shape.append(1)
+                m_v = [torch.max(mask, -1),torch.min(mask, -1)]
+        else:
+            shape = list(image.shape)
+            m_v = [torch.max(image, -1),torch.min(image, -1)]
+
+        m = [max(shape[1:3]),min(shape[1:3])]
+        return (*shape,shape,*m,*m_v)
 
 
 class get_TypeName:
