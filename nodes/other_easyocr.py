@@ -145,7 +145,7 @@ class load_EasyOCR_model:
                 "gpu": ("BOOLEAN",{"default": True},),
                 "detect": (["choose", "input"],{"default": "choose"},),
                 "language_list": (get_lang_list(),{"default": "English"},),
-                "language_name": ("STRING",{"default": "ch_sim,en", "multiline": False},),
+                "language_name": ("STRING",{"default": "ch_sim,en,Español", "multiline": False},),
             },
         }
     CATEGORY = CATEGORY_NAME
