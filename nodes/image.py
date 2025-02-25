@@ -657,7 +657,6 @@ class invert_channel_adv: #
                 m = int(n / 3)
                 for i in range(3):
                     channel_dirt[channel_name[i]] = RGB_Bath[i*m:(i+1)*m,...]
-                    print(f"*******************degub：第{i}个通道形状为：{channel_dirt[channel_name[i]].shape}")
             else:
                 print("Warning: RGBA_Cath mask batch input not RGBA detected, this input will be skipped !")
                 print("警告：检测到RGB_Bath遮罩批次输入不为RGB，将跳过此输入!")
@@ -1149,6 +1148,84 @@ class image_math_value:
         return (image,mask,s)
 
 
+class image_math_value_x10:
+    DESCRIPTION = """
+    expression: Advanced expression
+    clamp: It is recommended not to open if you want to continue with the next image_math_value.
+    Explanation 1: The A channel of the image can be optionally removed. 
+        shape represents the data shape.
+    Explanation 2: Torch methods are supported. Please note the output type of the image.
+
+    expression:高级表达式
+    clamp:如果要继续进行下一次image_math_value建议不打开
+    说明1：可选去掉image的A通道，shape为数据形状
+    说明2：支持torch方法，请注意image输出类型
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "expression":("STRING",{"default":"a+b","multiline": True}),
+                "RGBA_to_RGB":("BOOLEAN",{"default":True}),
+                "clamp":("BOOLEAN",{"default":True}),
+            },
+            "optional": {
+                "a":("IMAGE",),
+                "b":("IMAGE",),
+                "c":("IMAGE",),
+                "d":("IMAGE",),
+                "e":("MASK",),
+                "f":("MASK",),
+                "g":("MASK",),
+                "h":("MASK",),
+                "i":("MASK",),
+                "j":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","MASK","LIST")
+    RETURN_NAMES = ("image","mask","shape")
+    FUNCTION = "image_math"
+    def image_math(self,expression,clamp,RGBA_to_RGB,
+                   a=None, b=None, c=None, d=None,**kwargs):
+                   #e=None, f=None, g=None, h=None, i=None, j=None):
+        #初始化返回值
+        image = None
+        mask = None
+        s = [""]
+
+        #去掉A通道
+        if RGBA_to_RGB:
+            images = [a, b, c, d]
+            for index, img in enumerate(images):
+                if img is not None:
+                    if img.shape[-1] == 4:
+                        images[index] = img[..., 0:-1]
+            a, b, c, d = images
+
+        #单张批次对齐，待开发
+
+        #遮罩转3通道
+        tensors = {}
+        for k, v in kwargs.items():
+            if v is not None:
+                tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+        try:
+            image = eval(expression, {}, tensors)
+        except Exception as e:
+            raise ValueError(f"Error: Expression or input error!")
+
+        if image is not None:
+            try:
+                if clamp: image = torch.clamp(image, 0.0, 1.0)
+                s = list(image.shape)
+                mask = torch.mean(image, dim=3, keepdim=False)
+            except:
+                print("Warning: You have calculated non image data!")
+                s = [0,0,0,3]
+        return (image,mask,s)
+
+
 # ------------------video nodes--------------------
 CATEGORY_NAME = "WJNode/video"
 
@@ -1334,6 +1411,7 @@ NODE_CLASS_MAPPINGS = {
     "Bilateral_Filter": Bilateral_Filter,
     #"image_math": image_math,
     "image_math_value": image_math_value,
+    "image_math_value_x10": image_math_value_x10,
 
 
     #WJNode/video
