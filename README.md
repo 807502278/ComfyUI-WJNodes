@@ -132,3 +132,17 @@
   - ✅`path append` : 给字符串增加前缀后缀(参考KJNode)
   - ✅`del file` : 检测文件或路径是否存在,是否删除文件,运行需输入信号,删除需有写入权限
   - ✅`split path` : 路径切片,输入路径,输出:盘符/路径/文件/扩展名+检测是否是文件
+
+
+## models dir:
+```
+models
+    ├──torchvision
+    │   └──resnet
+    │       ├──resnet50-11ad3fa6.pth
+    │       └──...
+    └──EasyOCR
+        ├──craft_mlt_25k.pth
+        ├──latin_g2.pth
+        └──zh_sim_g2.pth
+```

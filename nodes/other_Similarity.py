@@ -109,7 +109,7 @@ class Run_Similarity:
                     }
             }
     
-    RETURN_TYPES = ("BOOL", "FLOAT",)
+    RETURN_TYPES = ("BOOLEAN", "FLOAT",)
     RETURN_NAMES = ("is_similiar", "cosine_similarity",)
     FUNCTION = "compare_image"
     CATEGORY = CATEGORY_NAME
