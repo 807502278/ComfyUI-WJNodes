@@ -167,7 +167,6 @@ def get_device_list():
         device_default = torch.device(device_str[2])
     else:
         device_default = torch.device(device_str[1])
-
     # Establish a device list dictionary 建立设备列表字典
     device_list = {device_str[0]: device_default, }
     for i in range(n-1):
@@ -175,7 +174,11 @@ def get_device_list():
 
     return [device_list, device_default]
 
-device_list, device_default = get_device_list()
+
+device_list, device_default = get_device_list() #设备列表(字典)，和默认设备(cuda设备类)
+device_input  = (list(device_list.keys()), 
+                 {"default": list(device_list.keys())[0]}) #节点输入元组，默认default
+
 
 
 def tensor_to_pil(image):  # Tensor to PIL
