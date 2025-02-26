@@ -1165,7 +1165,8 @@ class image_math_value_x10:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "expression":("STRING",{"default":"a+b","multiline": True}),
+                "expression1":("STRING",{"default":"a+b","multiline": True}),
+                "expression2":("STRING",{"default":"a+b","multiline": True}),
                 "RGBA_to_RGB":("BOOLEAN",{"default":True}),
                 "clamp":("BOOLEAN",{"default":True}),
             },
@@ -1186,42 +1187,46 @@ class image_math_value_x10:
     RETURN_TYPES = ("IMAGE","MASK","LIST")
     RETURN_NAMES = ("image","mask","shape")
     FUNCTION = "image_math"
-    def image_math(self,expression,clamp,RGBA_to_RGB,
-                   a=None, b=None, c=None, d=None,**kwargs):
-                   #e=None, f=None, g=None, h=None, i=None, j=None):
+    def image_math(self,expression,clamp,RGBA_to_RGB,**kwargs):
         #初始化返回值
-        image = None
-        mask = None
-        s = [""]
+        image,mask = None,None
+        s = [0,0,0,0]
 
-        #去掉A通道
-        if RGBA_to_RGB:
-            images = [a, b, c, d]
-            for index, img in enumerate(images):
-                if img is not None:
-                    if img.shape[-1] == 4:
-                        images[index] = img[..., 0:-1]
-            a, b, c, d = images
-
-        #单张批次对齐，待开发
-
-        #遮罩转3通道
-        tensors = {}
-        for k, v in kwargs.items():
-            if v is not None:
-                tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+        #将mask形状与image对齐方便计算
         try:
+            tensors = {}
+            if RGBA_to_RGB: #是否去掉image的A通道
+                for k, v in kwargs.items():
+                    if v is not None:
+                        if v.dim() == 3: tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        elif v.dim() == 4: #去掉image的A通道
+                            if v.shape[-1] == 4: tensors[k] = v[..., 0:-1]
+                            else: tensors[k] = v
+                        else: print(f"Warning: The input {k} is not standard image data! (wjnodes-image_math_value_x10)")
+            else:
+                for k, v in kwargs.items():
+                    if v is not None:
+                        if v.dim() == 3:  tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        elif v.dim() == 4: #遮罩转3通道
+                            if v.shape[-1] == 4:  print(f"Warning: The input {k} is 4-channel image data! (wjnodes-image_math_value_x10)")
+                            tensors[k] = v
+                        else: print(f"Warning: The input {k} is not standard image data!")
             image = eval(expression, {}, tensors)
         except Exception as e:
-            raise ValueError(f"Error: Expression or input error!")
+            raise ValueError(f"Error: Expression or input error! (wjnodes-image_math_value_x10)")
 
         if image is not None:
             try:
                 if clamp: image = torch.clamp(image, 0.0, 1.0)
+                if image.dim() == 3: #如果结果是遮罩
+                    mask = image
+                    image = mask.unsqueeze(-1).repeat(1, 1, 1, 3)
+                    print("Warning: The result may be a mask. (wjnodes-image_math_value_x10)")
+                elif image.dim() == 4: 
+                    mask = torch.mean(image, dim=3, keepdim=False)
                 s = list(image.shape)
-                mask = torch.mean(image, dim=3, keepdim=False)
             except:
-                print("Warning: You have calculated non image data!")
+                print("Warning: You have calculated non image data! (wjnodes-image_math_value_x10)")
                 s = [0,0,0,3]
         return (image,mask,s)
 
