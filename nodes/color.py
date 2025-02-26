@@ -333,9 +333,16 @@ class color_segmentation_v2:
         """
         主函数：根据颜色分割图像并生成遮罩
         """
+        #初始化值
+        self.skip_threshold = skip_threshold
+        self.select_mask_v = select_mask
+        self.invert_select_mask = invert_select_mask
+        self.invert_select = invert_select
+        self.invert_mask = invert_mask
+
         # 检查颜色字典是否为空
         if Color_dict == {}: 
-            return self.none_data(image, invert_mask)
+            return self.none_data(image)
 
         # 根据输出类型生成颜色列表
         Color_list = []
@@ -344,10 +351,10 @@ class color_segmentation_v2:
         elif output_type == "custom tag":
             custom_keys = self.remove_trailing_comma(custom_keys)  # 移除自定义键末尾的逗号
             if custom_keys == "":  # 自定义键为空直接返回结果
-                return self.none_data(image, invert_mask)
+                return self.none_data(image)
             keys = re.split(r',\s*|，\s*', custom_keys)  # 分割自定义键
             if set(keys) & set(Color_dict.keys()) == set():  # 自定义键无效直接返回结果
-                return self.none_data(image, invert_mask)
+                return self.none_data(image)
             Color_list = [[Color_dict[key] for key in keys if key in Color_dict],]  # 使用自定义键对应的颜色
         elif output_type == "background tag":
             keys = ['wall', 'sky', 'floor', 'ceiling', 'windowpane', 'traffic', 'background', 'back']  # 背景键
@@ -368,19 +375,19 @@ class color_segmentation_v2:
                     Color_list = Color_list[0]
                     for i in range(n):
                         image_temp = image[i]  # 获取当前图像
-                        mask_temp = self.run_color_segmentation(image_temp, Color_list, skip_threshold, select_mask, invert_select_mask, invert_select, True)  # 运行颜色分割
+                        mask_temp = self.run_color_segmentation(image_temp, Color_list, True)  # 运行颜色分割
                         mask = torch.cat((mask, mask_temp), dim=0)  # 将结果添加到遮罩中
                 else:
                     for i in range(n):
                         image_temp = image[i]  # 获取当前图像
                         Color_list_temp = Color_list[i]  # 获取当前颜色列表
-                        mask_temp = self.run_color_segmentation(image_temp, Color_list_temp, skip_threshold, select_mask, invert_select_mask, invert_select, True)  # 运行颜色分割
+                        mask_temp = self.run_color_segmentation(image_temp, Color_list_temp, True)  # 运行颜色分割
                         mask = torch.cat((mask, mask_temp), dim=0)  # 将结果添加到遮罩中
             else:
-                mask = self.run_color_segmentation(image[0], Color_list, skip_threshold, select_mask, invert_select_mask, invert_select, merge_mask)  # 运行颜色分割
+                mask = self.run_color_segmentation(image[0], Color_list, merge_mask)  # 运行颜色分割
         except:
             print("warn-color_segmentation: The selected batch exceeds the input batch and has been changed to the 0th batch")
-            mask = self.run_color_segmentation(image[0], Color_list[0], skip_threshold, select_mask, invert_select_mask, invert_select, merge_mask)  # 捕获异常并处理
+            mask = self.run_color_segmentation(image[0], Color_list[0], merge_mask)  # 捕获异常并处理
 
         if invert_mask : 
             if mask.dtype == torch.bool:
@@ -398,18 +405,18 @@ class color_segmentation_v2:
             return self.remove_trailing_comma(s[:-1])
         return s
 
-    def run_color_segmentation(self, image, Color_list, skip_threshold, select_mask, invert_select_mask, invert_select, merge_mask):
+    def run_color_segmentation(self, image, Color_list, merge_mask):
         """
         运行单张图像颜色分割
         """
-        mask = self.color_to_mask(image, Color_list, skip_threshold)  # 将颜色转换为遮罩
-        if select_mask is not None:  # 如果有选择遮罩
-            mask = self.select_mask(mask, select_mask, invert_select_mask, invert_select)  # 选择遮罩
+        mask = self.color_to_mask(image, Color_list)  # 将颜色转换为遮罩
+        if self.select_mask_v is not None:  # 如果有选择遮罩
+            mask = self.select_mask(mask)  # 选择遮罩
         if merge_mask:  # 如果需要合并遮罩
             mask = self.merge_maks(mask)  # 合并遮罩
         return mask
 
-    def color_to_mask(self, image, Color_list, skip_threshold):
+    def color_to_mask(self, image, Color_list):
         """
         将单张图像颜色转换为遮罩批次
         """
@@ -417,7 +424,7 @@ class color_segmentation_v2:
         shape = image.shape[:-1]  # 获取图像形状
 
         # 计算跳过阈值
-        skip_threshold = int(skip_threshold / 100 * shape[0] * shape[1]) + 1
+        skip_threshold = int(self.skip_threshold / 100 * shape[0] * shape[1]) + 1
         image = (torch.round(image * 255)).int()  # 将图像值四舍五入并转换为整数
         mask = torch.zeros([0, *shape], dtype=torch.int, device=device).bool()  # 初始化遮罩
 
@@ -466,12 +473,12 @@ class color_segmentation_v2:
             mask = mask[0].repeat(1, 1, 1)  # 将合并后的遮罩复制到所有位置
         return mask
 
-    def select_mask(self, mask, select_mask, invert_select_mask, invert_select):
+    def select_mask(self, mask):
         """
         选择遮罩
         """
-        select_mask = torch.round(select_mask).bool()[0]  # 将选择遮罩四舍五入并转换为布尔值
-        if invert_select_mask:  # 如果需要反转选择遮罩
+        select_mask = torch.round(self.select_mask_v).bool()[0]  # 将选择遮罩四舍五入并转换为布尔值
+        if self.invert_select_mask:  # 如果需要反转选择遮罩
             select_mask = ~select_mask
         new_mask = torch.zeros((0, *mask.shape[1:])).bool()  # 初始化新遮罩
         new_mask_i = torch.zeros((0, *mask.shape[1:])).bool()  # 初始化新遮罩的逆
@@ -481,17 +488,17 @@ class color_segmentation_v2:
                 new_mask = torch.cat((new_mask, mask[i].repeat(1, 1, 1)), dim=0)  # 将当前遮罩添加到新遮罩中
             else:
                 new_mask_i = torch.cat((new_mask_i, mask[i].repeat(1, 1, 1)), dim=0)  # 将当前遮罩添加到新遮罩的逆中
-        if invert_select:  # 如果需要反转选择
+        if self.invert_select:  # 如果需要反转选择
             return new_mask_i
         else:
             return new_mask
 
-    def none_data(self, image, invert_mask):
+    def none_data(self, image):
         """
-        处理空数据
+        处理空数据,根据是否反转新建与输入相同形状的黑/白遮罩
         """
         mask = None
-        if invert_mask:  # 如果需要反转遮罩
+        if self.invert_mask:  # 如果需要反转遮罩
             mask = torch.ones(image.shape[0:-1])
         else:
             mask = torch.zeros(image.shape[0:-1])
