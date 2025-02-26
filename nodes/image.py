@@ -1151,84 +1151,101 @@ class image_math_value:
 class image_math_value_x10:
     DESCRIPTION = """
     expression: Advanced expression
-    clamp: It is recommended not to open if you want to continue with the next image_math_value.
-    Explanation 1: The A channel of the image can be optionally removed. 
-        shape represents the data shape.
-    Explanation 2: Torch methods are supported. Please note the output type of the image.
+        Function: Perform numerical calculations on images using expressions.The mask will be treated as a 3-channel image.
+    Input:
+        expression1-3: The expression results corresponding to outputs 1-3.
+        RGBA_to_RGB: Convert the input image to a 3-channel image if it is a 4-channel image.
+        clamp: Limit the values to 0-1. It is recommended not to open if you want to continue with the next image_math_value.
+    Instructions:
+        1. The A channel of the image can be optionally removed. shape represents the data shape.
+        2. Some torch methods are supported. Please note the output type of the image.
+        3. Leave the expressions for the unwanted outputs blank to ignore unnecessary calculations. 
 
     expression:高级表达式
-    clamp:如果要继续进行下一次image_math_value建议不打开
-    说明1：可选去掉image的A通道，shape为数据形状
-    说明2：支持torch方法，请注意image输出类型
+        功能：使用表达式对图像进行数值计算，mask将被视为3通道图像
+    输入：
+        expression1-3：对应输出1-3的表达式结果
+        RGBA_to_RGB：如果输入image为4通道则将其转为3通道
+        clamp:限制数值为0-1，如果要继续进行下一次image_math_value建议不打开
+    说明：
+        1：可选去掉image的A通道，shape为数据形状
+        2：支持部分torch方法，请注意image输出类型
+        3：不需要的输出对应的表达式请留空，可忽略不必要的计算
     """
+    def __init__(self):
+        self.clamp = True
+        self.tensors = {}
+
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "expression1":("STRING",{"default":"a+b","multiline": True}),
-                "expression2":("STRING",{"default":"a+b","multiline": True}),
+                "expression2":("STRING",{"default":"","multiline": True}),
+                "expression3":("STRING",{"default":"","multiline": True}),
                 "RGBA_to_RGB":("BOOLEAN",{"default":True}),
                 "clamp":("BOOLEAN",{"default":True}),
             },
             "optional": {
-                "a":("IMAGE",),
-                "b":("IMAGE",),
-                "c":("IMAGE",),
-                "d":("IMAGE",),
-                "e":("MASK",),
-                "f":("MASK",),
-                "g":("MASK",),
-                "h":("MASK",),
-                "i":("MASK",),
-                "j":("MASK",),
+                "a":("IMAGE",),"b":("IMAGE",),"c":("IMAGE",),"d":("IMAGE",),
+                "e":("MASK",),"f":("MASK",),"g":("MASK",),"h":("MASK",),"i":("MASK",),"j":("MASK",),
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE","MASK","LIST")
-    RETURN_NAMES = ("image","mask","shape")
+    RETURN_TYPES = ("IMAGE","MASK","IMAGE","MASK","IMAGE","MASK")
+    RETURN_NAMES = ("image1","mask1","image2","mask2","image3","mask3")
     FUNCTION = "image_math"
-    def image_math(self,expression,clamp,RGBA_to_RGB,**kwargs):
-        #初始化返回值
-        image,mask = None,None
-        s = [0,0,0,0]
-
+    def image_math(self,expression1,expression2,expression3,clamp,RGBA_to_RGB,**kwargs):
+        #初始化值
+        self.clamp = clamp
         #将mask形状与image对齐方便计算
         try:
-            tensors = {}
             if RGBA_to_RGB: #是否去掉image的A通道
                 for k, v in kwargs.items():
                     if v is not None:
-                        if v.dim() == 3: tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        if v.dim() == 3: self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
                         elif v.dim() == 4: #去掉image的A通道
-                            if v.shape[-1] == 4: tensors[k] = v[..., 0:-1]
-                            else: tensors[k] = v
+                            if v.shape[-1] == 4: self.tensors[k] = v[..., 0:-1]
+                            else: self.tensors[k] = v
                         else: print(f"Warning: The input {k} is not standard image data! (wjnodes-image_math_value_x10)")
             else:
                 for k, v in kwargs.items():
                     if v is not None:
-                        if v.dim() == 3:  tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        if v.dim() == 3:  self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
                         elif v.dim() == 4: #遮罩转3通道
                             if v.shape[-1] == 4:  print(f"Warning: The input {k} is 4-channel image data! (wjnodes-image_math_value_x10)")
-                            tensors[k] = v
+                            self.tensors[k] = v
                         else: print(f"Warning: The input {k} is not standard image data!")
-            image = eval(expression, {}, tensors)
-        except Exception as e:
-            raise ValueError(f"Error: Expression or input error! (wjnodes-image_math_value_x10)")
+        except Exception as e1:
+            print(e1)
+            raise ValueError(f"Error: input error! (wjnodes-image_math_value_x10)")
 
+        return (*self.handle_img(expression1,1),
+                *self.handle_img(expression2,2),
+                *self.handle_img(expression3,3),
+                )
+    
+    def handle_img(self,expression,n=1):
+        mask,image = None,None
+        try:
+            e_str = [""," "]
+            if expression not in e_str:
+                image = eval(expression, {}, self.tensors)
+        except:
+            print(f"Error: Expression{n} error! (wjnodes-image_math_value_x10)")
         if image is not None:
             try:
-                if clamp: image = torch.clamp(image, 0.0, 1.0)
+                if self.clamp: image = torch.clamp(image, 0.0, 1.0)
                 if image.dim() == 3: #如果结果是遮罩
                     mask = image
                     image = mask.unsqueeze(-1).repeat(1, 1, 1, 3)
                     print("Warning: The result may be a mask. (wjnodes-image_math_value_x10)")
                 elif image.dim() == 4: 
                     mask = torch.mean(image, dim=3, keepdim=False)
-                s = list(image.shape)
             except:
                 print("Warning: You have calculated non image data! (wjnodes-image_math_value_x10)")
-                s = [0,0,0,3]
-        return (image,mask,s)
+        return (image,mask)
+
 
 
 # ------------------video nodes--------------------
