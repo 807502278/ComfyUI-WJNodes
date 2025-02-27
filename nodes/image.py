@@ -13,7 +13,8 @@ import json
 import folder_paths
 import node_helpers
 from ..moduel.image_utils import device_list, device_default
-
+from ..moduel.custom_class import any
+from ..moduel.str_edit import is_safe_eval
 
 # ------------------image load/save nodes--------------------
 CATEGORY_NAME = "WJNode/Image"
@@ -1148,28 +1149,37 @@ class image_math_value:
         return (image,mask,s)
 
 
-class image_math_value_x10:
+class image_math_value_v2:
     DESCRIPTION = """
     expression: Advanced expression
-        Function: Perform numerical calculations on images using expressions.The mask will be treated as a 3-channel image.
+    Function: Perform numerical calculations on images using expressions.
+        The mask will be treated as a 3-channel image.
     Input:
-        expression1-3: The expression results corresponding to outputs 1-3.
-        RGBA_to_RGB: Convert the input image to a 3-channel image if it is a 4-channel image.
-        clamp: Limit the values to 0-1. It is recommended not to open if you want to continue with the next image_math_value.
+        - a~j: Arbitrary inputs as variables
+        - expression1~3: Enter mathematical expressions. The results will be correspondingly output to 1 - 3. Spaces are allowed.
+        - RGBA_to_RGB: When turned on, if the input image is 4-channel, 
+            it will be converted to 3-channel.
+        - clamp: Limit the image values to 0-1. 
+            It is not recommended to turn it on if you want to continue with the next image_math_value.
     Instructions:
-        1. The A channel of the image can be optionally removed. shape represents the data shape.
-        2. Some torch methods are supported. Please note the output type of the image.
-        3. Leave the expressions for the unwanted outputs blank to ignore unnecessary calculations. 
+        1. Note that if the expression result is not an image (tensor), 
+            the result will be output to the corresponding value. 
+            In this case, the image and mask outputs will be empty. 
+            Conversely, the value will be empty.
+        2. Support some Python methods, please pay attention to the output type
+        3. Leave the expressions for the outputs you don't need empty to ignore unnecessary calculations. 
 
     expression:高级表达式
         功能：使用表达式对图像进行数值计算，mask将被视为3通道图像
     输入：
-        expression1-3：对应输出1-3的表达式结果
-        RGBA_to_RGB：如果输入image为4通道则将其转为3通道
-        clamp:限制数值为0-1，如果要继续进行下一次image_math_value建议不打开
+        a~j：输入任意作为变量
+        expression1~3：输入数学表达式，结果将对应输出到1-3，可包含空格
+        RGBA_to_RGB：打开时如果输入image为4通道则将其转为3通道
+        clamp:限制图像数值为0-1，如果要继续进行下一次image_math_value建议不打开
     说明：
-        1：可选去掉image的A通道，shape为数据形状
-        2：支持部分torch方法，请注意image输出类型
+        1：注意表达式结果若不是图像(张量)，则结果将输出到对应的value
+            此时image和mask输出将为空，反之value为空
+        2：支持部分python方法，请注意输出类型
         3：不需要的输出对应的表达式请留空，可忽略不必要的计算
     """
     def __init__(self):
@@ -1184,41 +1194,37 @@ class image_math_value_x10:
                 "expression2":("STRING",{"default":"","multiline": True}),
                 "expression3":("STRING",{"default":"","multiline": True}),
                 "RGBA_to_RGB":("BOOLEAN",{"default":True}),
-                "clamp":("BOOLEAN",{"default":True}),
+                "image_clamp":("BOOLEAN",{"default":True}),
             },
             "optional": {
-                "a":("IMAGE",),"b":("IMAGE",),"c":("IMAGE",),"d":("IMAGE",),
-                "e":("MASK",),"f":("MASK",),"g":("MASK",),"h":("MASK",),"i":("MASK",),"j":("MASK",),
+                "a":(any,),"b":(any,),"c":(any,),"d":(any,),"e":(any,),"f":(any,),"g":(any,),"h":(any,),"i":(any,),"j":(any,)
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE","MASK","IMAGE","MASK","IMAGE","MASK")
-    RETURN_NAMES = ("image1","mask1","image2","mask2","image3","mask3")
+    RETURN_TYPES = ("IMAGE","MASK",any,"IMAGE","MASK",any,"IMAGE","MASK",any)
+    RETURN_NAMES = ("image1","mask1","value1","image2","mask2","value2","image3","mask3","value3")
     FUNCTION = "image_math"
-    def image_math(self,expression1,expression2,expression3,clamp,RGBA_to_RGB,**kwargs):
+    def image_math(self,expression1,expression2,expression3,image_clamp,RGBA_to_RGB,**kwargs):
         #初始化值
-        self.clamp = clamp
+        self.clamp = image_clamp
         #将mask形状与image对齐方便计算
         try:
-            if RGBA_to_RGB: #是否去掉image的A通道
-                for k, v in kwargs.items():
-                    if v is not None:
-                        if v.dim() == 3: self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
-                        elif v.dim() == 4: #去掉image的A通道
-                            if v.shape[-1] == 4: self.tensors[k] = v[..., 0:-1]
-                            else: self.tensors[k] = v
-                        else: print(f"Warning: The input {k} is not standard image data! (wjnodes-image_math_value_x10)")
-            else:
-                for k, v in kwargs.items():
-                    if v is not None:
-                        if v.dim() == 3:  self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
-                        elif v.dim() == 4: #遮罩转3通道
-                            if v.shape[-1] == 4:  print(f"Warning: The input {k} is 4-channel image data! (wjnodes-image_math_value_x10)")
-                            self.tensors[k] = v
-                        else: print(f"Warning: The input {k} is not standard image data!")
+            for k, v in kwargs.items():
+                if v is not None:
+                    if isinstance(v,torch.Tensor): #输入的张量
+                        if v.dim() == 3:
+                            self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)#如果是遮罩则转3通道
+                        elif v.dim() == 4:
+                            if v.shape[-1] == 4 and RGBA_to_RGB: 
+                                self.tensors[k] = v[..., 0:-1] #去掉image的A通道
+                            else: 
+                                self.tensors[k] = v
+                        else: print(f"Warning: The input {k} is not standard image data! (image_math_value_v2)")
+                    else:
+                        self.tensors[k] = v
         except Exception as e1:
             print(e1)
-            raise ValueError(f"Error: input error! (wjnodes-image_math_value_x10)")
+            raise ValueError(f"Error: input error! (image_math_value_v2)")
 
         return (*self.handle_img(expression1,1),
                 *self.handle_img(expression2,2),
@@ -1226,25 +1232,112 @@ class image_math_value_x10:
                 )
     
     def handle_img(self,expression,n=1):
-        mask,image = None,None
+        #初始化输出
+        mask,image,data = None,None,None
+        #检查字符串
         try:
-            e_str = [""," "]
-            if expression not in e_str:
-                image = eval(expression, {}, self.tensors)
+            if expression not in [""," ",None]:
+                safe, reason = is_safe_eval(expression)
+                if safe: image = eval(expression, {}, self.tensors)
+                else: print("warn: "+ reason + ",Ignore this expression"+ str(n))
         except:
-            print(f"Error: Expression{n} error! (wjnodes-image_math_value_x10)")
+            print(f"Error: Expression{n} error! (image_math_value_v2)")
+
+        #若结果不为空则进行处理
         if image is not None:
             try:
-                if self.clamp: image = torch.clamp(image, 0.0, 1.0)
-                if image.dim() == 3: #如果结果是遮罩
-                    mask = image
-                    image = mask.unsqueeze(-1).repeat(1, 1, 1, 3)
-                    print("Warning: The result may be a mask. (wjnodes-image_math_value_x10)")
-                elif image.dim() == 4: 
-                    mask = torch.mean(image, dim=3, keepdim=False)
+                if isinstance(image,torch.Tensor): #若输出为张量(图像类)
+                    if self.clamp:#是否钳制到0-1
+                        image = torch.clamp(image, 0.0, 1.0) 
+                    if image.dim() == 3: #如果结果是遮罩，将遮罩作为通道转为图像输出
+                        mask = image
+                        image = mask.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        print("Warning: The result may be a mask. (image_math_value_v2)")
+                    elif image.dim() == 4: #如果结果是图像，将图像以求均值的方式压缩为遮罩
+                        mask = torch.mean(image, dim=3, keepdim=False)
+                else:
+                    data = image #若输出为非张量直接返回
             except:
-                print("Warning: You have calculated non image data! (wjnodes-image_math_value_x10)")
-        return (image,mask)
+                print("Warning: You have calculated non image data! (image_math_value_v2)")
+        return (image,mask,data)
+
+
+class image_math_value_v1(image_math_value_v2):
+    DESCRIPTION = """
+    expression: Advanced expression
+    Function: Perform numerical calculations on images using expressions.
+        The mask will be treated as a 3-channel image.
+    Input:
+        - a~j: Arbitrary inputs as variables
+        - expression1~3: Enter mathematical expressions. The results will be correspondingly output to 1 - 3. Spaces are allowed.
+        - RGBA_to_RGB: When turned on, if the input image is 4-channel, 
+            it will be converted to 3-channel.
+        - clamp: Limit the image values to 0-1. 
+            It is not recommended to turn it on if you want to continue with the next image_math_value.
+    Instructions:
+        1. Note that if the expression result is not an image (tensor), 
+            the result will be output to the corresponding value. 
+            In this case, the image and mask outputs will be empty. 
+            Conversely, the value will be empty.
+        2. Support some Python methods, please pay attention to the output type
+        3. Leave the expressions for the outputs you don't need empty to ignore unnecessary calculations. 
+
+    expression:高级表达式
+        功能：使用表达式对图像进行数值计算，mask将被视为3通道图像
+    输入：
+        a~j：输入任意作为变量
+        expression：输入数学表达式，可包含空格
+        RGBA_to_RGB：打开时如果输入image为4通道则将其转为3通道
+        clamp:限制图像数值为0-1，如果要继续进行下一次image_math_value建议不打开
+    说明：
+        1：注意表达式结果若不是图像(张量)，则结果将输出到value
+            此时image和mask输出将为空，反之value为空
+        2：支持部分python方法，请注意输出类型
+        3：不需要的输出对应的表达式请留空，可忽略不必要的计算
+    """
+    def __init__(self):
+        self.clamp = True
+        self.tensors = {}
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "expression1":("STRING",{"default":"a+b","multiline": True}),
+                "RGBA_to_RGB":("BOOLEAN",{"default":True}),
+                "image_clamp":("BOOLEAN",{"default":True}),
+            },
+            "optional": {
+                "a":(any,),"b":(any,),"c":(any,),"d":(any,)
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","MASK",any)
+    RETURN_NAMES = ("image","mask","value")
+    FUNCTION = "image_math"
+    def image_math(self,expression1,image_clamp,RGBA_to_RGB,**kwargs):
+        #初始化值
+        self.clamp = image_clamp
+        #将mask形状与image对齐方便计算
+        try:
+            for k, v in kwargs.items():
+                if v is not None:
+                    if isinstance(v,torch.Tensor): #输入的张量
+                        if v.dim() == 3:
+                            self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)#如果是遮罩则转3通道
+                        elif v.dim() == 4:
+                            if v.shape[-1] == 4 and RGBA_to_RGB: 
+                                self.tensors[k] = v[..., 0:-1] #去掉image的A通道
+                            else: 
+                                self.tensors[k] = v
+                        else: print(f"Warning: The input {k} is not standard image data! (image_math_value_v2)")
+                    else:
+                        self.tensors[k] = v
+        except Exception as e1:
+            print(e1)
+            raise ValueError(f"Error: input error! (image_math_value_v2)")
+
+        return (*self.handle_img(expression1,1),)
 
 
 
@@ -1432,8 +1525,8 @@ NODE_CLASS_MAPPINGS = {
     # "RGBABatchToImage": RGBABatch_to_image,
     "Bilateral_Filter": Bilateral_Filter,
     #"image_math": image_math,
-    "image_math_value": image_math_value,
-    "image_math_value_x10": image_math_value_x10,
+    "image_math_value_v1": image_math_value_v1,
+    "image_math_value_v2": image_math_value_v2,
 
 
     #WJNode/video
