@@ -5,11 +5,7 @@ import numpy as np
 from PIL import Image
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-class AnyType(str):
-  """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
-  def __ne__(self, __value: object) -> bool:
-    return False
-any = AnyType("*")
+from ..moduel.custom_class import any
 
 def prepare_torch_img(img, size_H, size_W, device="cuda", keep_shape=False):
     # [N, H, W, C] -> [N, C, H, W]

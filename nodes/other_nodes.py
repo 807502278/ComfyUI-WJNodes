@@ -8,24 +8,10 @@ from pathlib import Path
 import folder_paths 
 from comfy.utils import ProgressBar
 import comfy.model_management as mm
+
 from ..moduel.str_edit import str_edit
-from ..moduel.str_edit import str_edit
-
-def pil_to_mask(image):  # PIL to Mask
-    image_np = np.array(image.convert("L")).astype(np.float32) / 255.0
-    mask = torch.from_numpy(image_np)
-    return 1.0 - mask
-
-class AnyType(str):
-    def __init__(self, _):
-        self.is_any_type = True
-
-    def __eq__(self, _) -> bool:
-        return True
-
-    def __ne__(self, __value: object) -> bool:
-        return False
-any = AnyType("*")
+from ..moduel.custom_class import any
+from ..moduel.image_utils import pil_to_mask
 
 
 # ------------------GetData nodes------------------
@@ -222,7 +208,7 @@ class Select_Batch_v2:
         return(t,e_t,e_s)
 
 
-class SelectBatch_paragraph: #开发中
+class SelectBatch_paragraph: # ******************开发中
     DESCRIPTION = """
     功能：
     返回指定批次段(第一张图像编号为0)
@@ -280,7 +266,7 @@ class SelectBatch_paragraph: #开发中
                     images[torch.tensor(exclude_list, dtype=torch.float)])
  
 
-class Batch_Average: #开发中
+class Batch_Average: # ******************开发中
     DESCRIPTION = """
     功能：
     将批次平均切割
@@ -426,7 +412,7 @@ class get_image_data:
         return (*shape,shape,*m)
 
 
-class get_image_value: #计算图像的值，开发中
+class get_image_value: #计算图像的值，******************开发中
     DESCRIPTION = """
     Obtain image data
     获取图像数据
@@ -449,26 +435,6 @@ class get_image_value: #计算图像的值，开发中
 
     def element_count(self, image = None, mask = None):
         return ()
-
-
-class get_TypeName:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "data": (any,),
-            },
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("TypeName",)
-    OUTPUT_NODE = True
-    FUNCTION = "TypeName"
-
-    def TypeName(self, data, ):
-        name = str(type(data).__name__)
-        print(f"Prompt:The input data type is --->{name}")
-        return (name,)
 
 
 class array_count:
@@ -513,7 +479,7 @@ class array_count:
 CATEGORY_NAME = "WJNode/Other-node"
 
 
-class any_data:
+class Any_Pipe: # 任意数据打组
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -535,48 +501,31 @@ class any_data:
                     "data_3", "data_4", "data_5", "data_6",)
     FUNCTION = "any_data_array"
 
-    def any_data_array(self, data_array=[None, None, None, None, None, None],
-                       data_1=None,
-                       data_2=None,
-                       data_3=None,
-                       data_4=None,
-                       data_5=None,
-                       data_6=None):
+    def any_data_array(self, data_array=None,**kwargs):
+        #初始化输入值
+        keys = ["data_1","data_2","data_3","data_4","data_5","data_6"]
+        input_data = [None for i in keys]
+        if kwargs != {}:
+            i = 0
+            for k,v in kwargs.items():
+                if k in keys: input_data[i] = v
+                else: input_data[i] = None
+                i+=1
 
-        if data_1 is None:
-            data_1 = data_array[0]
+        #刷新输出
+        if data_array is None: return (input_data, *input_data)
         else:
-            data_array[0] = data_1
-
-        if data_2 is None:
-            data_2 = data_array[1]
-        else:
-            data_array[1] = data_2
-
-        if data_3 is None:
-            data_3 = data_array[2]
-        else:
-            data_array[2] = data_3
-
-        if data_4 is None:
-            data_4 = data_array[3]
-        else:
-            data_array[3] = data_4
-
-        if data_5 is None:
-            data_5 = data_array[4]
-        else:
-            data_array[4] = data_5
-
-        if data_6 is None:
-            data_6 = data_array[5]
-        else:
-            data_array[5] = data_6
-
-        return (data_array, data_1, data_2, data_3, data_4, data_5, data_6,)
+            output_data = []
+            for i in range(len(keys)):
+                if input_data[i] == None: output_data.append(data_array[i])
+                else: output_data.append(input_data[i])
+            return (output_data, *output_data)
 
 
-class Folder_link: #开发中
+class Folder_link: # 创建符号链接 ******************开发中
+    """
+    创建符号链接
+    """
     nodes_list = os.listdir(os.path.join(folder_paths.base_path,"custom_nodes"))
     @classmethod
     def INPUT_TYPES(s):
@@ -606,11 +555,11 @@ class Folder_link: #开发中
 
         path_model = os.path.join(path,"models")
         path_custom = os.path.join(folder_paths.base_path,"custom_nodes")
-        path_aux = os.path.join(path_custom, "comfyui_controlnet_aux", "ckpts")
+        path_aux = os.path.join(path_custom, "comfyui/controlnet_aux", "ckpts")
         
         path_model_link = folder_paths.models_dir
         path_custom_link = folder_paths.folder_names_and_paths["custom_nodes"]
-        path_aux_link = os.path.join(path_custom_link, "comfyui_controlnet_aux", "ckpts")
+        path_aux_link = os.path.join(path_custom_link, "comfyui/controlnet_aux", "ckpts")
 
 
         if link_models:
@@ -651,6 +600,104 @@ class Folder_link: #开发中
                         ...
                 if p.exists(): p.mkdir(parents=True) #路径不存在则创建
                 p_link.symlink_to(p)
+
+
+class Determine_Type:
+    type_dict = {
+        "comfyui/image": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "comfyui/image255": ["torch.ByteTensor","torch.CharTensor","torch.ShortTensor"],
+        "comfyui/image4channels": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "comfyui/image3channels": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "comfyui/image_bath": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "comfyui/image_Single": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "comfyui/mask": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "comfyui/mask255": ["torch.ByteTensor","torch.CharTensor","torch.ShortTensor"],
+        "comfyui/mask_bath": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "comfyui/mask_Single": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor"],
+        "value/None": None,
+        "value/int": int,"value/float": float,"value/string": str,"value/complex": complex,
+        "value/tuple":tuple,"value/list": list,"value/set":set,"value/dict": dict,"Tensor/Tensor": torch.Tensor,
+        "Tensor/torch.bool": ["torch.bool",],
+        "Tensor/torch.int": ["torch.ByteTensor","torch.CharTensor","torch.ShortTensor","torch.IntTensor","torch.LongTensor"],
+        "Tensor/torch.float": ["torch.HalfTensor","torch.BFloat16Tensor","torch.FloatTensor","torch.DoubleTensor"],
+        "model/unet":"ModelPatcher", "model/vae":"VAE", "model/clip":"CLIP",
+        "sampler/conditioning":"list", "sampler/latent":"dict", "sampler/latent_noise_mask":"dict"
+    }
+    type_class = {
+        "comfyui":["comfyui/image","comfyui/image255","comfyui/mask","comfyui/mask255"],
+        "value":["value/None","Tensor/Tensor","value/int","value/float","value/string","value/complex",
+                 "value/tuple","value/list","value/set","value/dict"],
+        "Tensor":["Tensor/torch.bool","Tensor/torch.int","Tensor/torch.float"],
+        "numpy":["np.array",],
+    }
+
+    @classmethod
+    def INPUT_TYPES(s):
+        type_list = list(s.type_dict.keys())
+        return {
+            "required": {
+                "type_name": (type_list, {"default": type_list[0]}),
+                #"subobject": ("BOOLEAN", {"default": False})
+            },
+            "optional": {
+                "data": (any,),
+            }
+        }
+
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = (any,"BOOLEAN", "STRING")
+    RETURN_NAMES = ("data","is select type", "type name")
+    FUNCTION = "select_type"
+
+    def select_type(self, type_name, data=None):
+        target_types = self.__class__.type_dict[type_name]
+        data_type = data.__class__.__name__
+        is_select_type = False
+        if target_types is None: #空值
+            if data is None: is_select_type = True
+        elif "comfyui" in type_name: #图像
+            if data_type == "Tensor":
+                data_type = str(data.type())
+            if data_type in target_types:
+                if type_name == "comfyui/image":
+                    if data.dim() == 4 : is_select_type = True
+                elif type_name == "comfyui/image255":
+                    if data_type in target_types: is_select_type = True
+                elif type_name == "comfyui/image4channels":
+                    if data.dim() == 4 : 
+                        if data.shape[-1] == 4: is_select_type = True
+                elif type_name == "comfyui/image3channels":
+                    if data.dim() == 4 : 
+                        if data.shape[-1] == 3: is_select_type = True
+                elif type_name == "comfyui/image_bath":
+                    if data.shape[0] > 1 : is_select_type = True
+                elif type_name == "comfyui/image_Single":
+                    if data.shape[0] == 1 : is_select_type = True
+                elif type_name == "comfyui/mask":
+                    if data.dim() == 3 : is_select_type = True
+                elif type_name == "comfyui/mask255":
+                    if data_type in target_types: is_select_type = True
+                elif type_name == "comfyui/mask_bath":
+                    if data.shape[0] > 1 : is_select_type = True
+                elif type_name == "comfyui/mask_Single":
+                    if data.shape[0] == 1 : is_select_type = True
+        elif type_name in self.__class__.type_class["value"]: #基础
+            if "value/" + data_type == type_name: is_select_type = True
+            if "Tensor/" + data_type == type_name: is_select_type = True
+        elif type_name in self.__class__.type_class["Tensor"] and data_type=="Tensor": #张量
+            data_type = str(data.type())
+            if data_type in target_types: is_select_type = True
+        elif "model" in type_name: #模型
+            if data_type == target_types: is_select_type = True
+        elif "sampler" in type_name: #采样
+            if data_type == target_types:
+                if type_name == "sampler/conditioning":
+                    if data[0][0].__class__.__name__ == "Tensor": is_select_type = True
+                if type_name == "sampler/latent":
+                    if "samples" in list(data.keys()) : is_select_type = True
+                if type_name == "sampler/latent_noise_mask":
+                    if "noise_mask" in list(data.keys()) : is_select_type = True
+        return (data,is_select_type, data_type)
 
 
 CATEGORY_NAME = "WJNode/Other-plugins"
@@ -917,8 +964,8 @@ NODE_CLASS_MAPPINGS = {
     "Select_Batch_v2": Select_Batch_v2,
     "Mask_Detection": Mask_Detection,
     #WJNode/Other-functions
-    "any_data": any_data,
-    "get_TypeName": get_TypeName,
+    "Any_Pipe": Any_Pipe,
+    "Determine_Type": Determine_Type,
     "array_count": array_count,
     "get_image_data": get_image_data,
     #WJNode/Other-plugins

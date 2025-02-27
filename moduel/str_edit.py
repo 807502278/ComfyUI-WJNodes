@@ -66,3 +66,56 @@ class str_edit:
     @classmethod 
     def list_to_str(cls,str_list:list):
         return f"{str_list}"[1:-1].replace("'","")
+
+
+def is_safe_eval(input_string):
+    # 定义不安全的关键词列表
+    unsafe_keywords = [
+        # 导入模块
+        "import", "__import__", "from",
+        # 文件操作
+        "open", "file", "os.", "io.", "pathlib.",
+        # 网络操作
+        "urllib", "requests", "socket", "http", "ftp",
+        # 加密操作
+        "hashlib", "cryptography", "base64", "encrypt", "decrypt",
+        # 动态代码执行
+        "exec", "eval", "compile", "code", "compile",
+        # 其他危险操作
+        "os.system", "subprocess", "shutil", "sys.", "globals", "locals"
+    ]
+    
+    # 检测是否包含不安全的关键词
+    for keyword in unsafe_keywords:
+        if re.search(r'\b' + re.escape(keyword) + r'\b', input_string, re.IGNORECASE):
+            return False, f"Detected unsafe keywords:{keyword}"
+    
+    # 检测是否包含其他潜在危险的模式
+    if re.search(r'\b__\w+__\b', input_string):  # 检测双下划线魔术方法
+        return False, "Magic methods for detecting potential hazards"
+    
+    #if re.search(r'\b(=|==|!=|<=|>=|<|>)\b', input_string):  # 检测比较操作符
+    #    return False, "Comparison operator detected"
+    
+    if re.search(r'\b(while|for|if|else|elif)\b', input_string):  # 检测控制流语句
+        return False, "Detected control flow statement"
+    
+    # 如果没有检测到不安全内容，返回 True
+    return True, "Input string security"
+
+# 字符串安全测试函数
+def test_safe():
+    test_strings = [
+        "2 + 3",
+        "import os",
+        "open('file.txt', 'w')",
+        "requests.get('http://example.com')",
+        "eval('print(123)')",
+        "os.system('ls')",
+        "hashlib.md5('test')",
+        "base64.b64encode('test')"
+    ]
+
+    for test in test_strings:
+        safe, reason = is_safe_eval(test)
+        print(f"输入: {test} -> 安全: {safe}, 原因: {reason}")

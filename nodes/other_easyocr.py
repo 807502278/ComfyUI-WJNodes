@@ -9,15 +9,12 @@ import numpy as np
 import torch
 from PIL import Image
 
-CATEGORY_NAME = "WJNode/Other-plugins"
-
 logger = logging.getLogger("ComfyUI-EasyOCR")
-model_dir_name = "EasyOCR"
+CATEGORY_NAME = "WJNode/Other-plugins"
 
 lang_list = {
     "English": "en",
-    "简体中文": "ch_sim",
-    "繁體中文": "ch_tra",
+    "简体中文": "ch_sim", "繁體中文": "ch_tra",
     "العربية": "ar",
     "Azərbaycan": "az",
     "Euskal": "eu",
@@ -131,7 +128,6 @@ def plot_boxes_to_image(image_pil, tgt, group_id = None):
 
     return res_mask, labelme_data
 
-
 class load_EasyOCR_model:
     DESCRIPTION = """
     Original node author: https://github.com/prodogape
@@ -153,7 +149,7 @@ class load_EasyOCR_model:
     RETURN_TYPES = ("EasyOCR_model",)
     def load_model(self, gpu, detect, language_list, language_name):
         # OCR检测模型准备
-        model_storage_directory = os.path.join(folder_paths.models_dir, model_dir_name)
+        model_storage_directory = os.path.join(folder_paths.models_dir, "EasyOCR")
         if not os.path.exists(model_storage_directory):
             os.makedirs(model_storage_directory)
 
@@ -171,7 +167,6 @@ class load_EasyOCR_model:
             raise ImportError("Running this node requires the -easyocr- module")
         reader = easyocr.Reader(language, model_storage_directory=model_storage_directory, gpu=gpu)
         return (reader,)
-
 
 class ApplyEasyOCR_batch:
     DESCRIPTION = """
@@ -237,7 +232,6 @@ class ApplyEasyOCR_batch:
         if invert_mask:
             res_masks = 1 - res_masks
         return (res_masks,res_labels,)
-
 
 NODE_CLASS_MAPPINGS = {
     "ApplyEasyOCR_batch": ApplyEasyOCR_batch,
