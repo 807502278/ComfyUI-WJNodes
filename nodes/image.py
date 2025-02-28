@@ -777,30 +777,6 @@ class invert_channel_adv: #
         return [image, device_image]
 
 
-class RGBABatch_to_image:  # 待开发
-    DESCRIPTION = """
-    Convert a batch of RGBA images to a single image
-    将RGBA遮罩批次转换为单个图像。
-    """
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "mask_batch": ("MASK",),
-            },
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE", )
-    RETURN_NAMES = ("RGBA", )
-    FUNCTION = "RGBABatch_to_image"
-
-    def RGBABatch_to_image(self, images):
-        image_RGBA = torch.cat(
-            (images[0], images[1], images[2], images[3]), dim=3)
-        return (image_RGBA, )
-
-
 class merge_image_list:  # 待开发
     DESCRIPTION = """
     Support packaging images in batches/images lists/single images/packaging into image batches (ignoring null objects, used in loops).
@@ -1085,70 +1061,6 @@ class image_math:
             return mask1
 
 
-class image_math_value:
-    DESCRIPTION = """
-    expression: expression
-    clamp: If you want to continue with the next image_math_ralue, 
-            it is recommended not to open it
-    Explanation: The A channel of the image will be automatically removed, 
-            and the shape will be the data shape
-
-    expression:表达式
-    clamp:如果要继续进行下一次image_math_value建议不打开
-    说明：会自动去掉image的A通道，shape为数据形状
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "expression":("STRING",{"default":"a+b","multiline": True}),
-                "clamp":("BOOLEAN",{"default":True}),
-            },
-            "optional": {
-                "a":("IMAGE",),
-                "b":("IMAGE",),
-                "c":("MASK",),
-                "d":("MASK",),
-            }
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE","MASK","LIST")
-    RETURN_NAMES = ("image","mask","shape")
-    FUNCTION = "image_math"
-    def image_math(self,expression,clamp,
-                   a=None, b=None, c=None, d=None):
-        image = None
-        mask = None
-        s = 0
-        #去掉A通道
-        if a is not None:
-            if a.shape[-1] == 4: a = a[...,0:-1]
-        if b is not None:
-            if b.shape[-1] == 4: b = b[...,0:-1]
-
-        #单张批次对齐
-        #pass
-
-        #遮罩转3通道
-        if c is not None:
-            c = c.unsqueeze(-1).repeat(1, 1, 1, 3)
-        if d is not None:
-            d = d.unsqueeze(-1).repeat(1, 1, 1, 3)
-
-        try:
-            local_vars = locals().copy()
-            exec(f"image = {expression}", {}, local_vars)
-            image = local_vars.get("image")
-        except:
-            print("Warning: Invalid expression !, will output null value.")
-
-        if image is not None:
-            if clamp: image = torch.clamp(image, 0.0, 1.0)
-            s = list(image.shape)
-            mask = torch.mean(image, dim=3, keepdim=False)
-        return (image,mask,s)
-
-
 class image_math_value_v2:
     DESCRIPTION = """
     expression: Advanced expression
@@ -1340,7 +1252,6 @@ class image_math_value_v1(image_math_value_v2):
         return (*self.handle_img(expression1,1),)
 
 
-
 # ------------------video nodes--------------------
 CATEGORY_NAME = "WJNode/video"
 
@@ -1522,9 +1433,8 @@ NODE_CLASS_MAPPINGS = {
     # "ToImageListData": to_image_list_data,
     # "MergeImageList": merge_image_list,
     # "ImageChannelBus": image_channel_bus,
-    # "RGBABatchToImage": RGBABatch_to_image,
     "Bilateral_Filter": Bilateral_Filter,
-    #"image_math": image_math,
+    "image_math": image_math,
     "image_math_value_v1": image_math_value_v1,
     "image_math_value_v2": image_math_value_v2,
 

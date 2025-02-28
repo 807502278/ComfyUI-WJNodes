@@ -437,45 +437,6 @@ class get_image_value: #计算图像的值，******************开发中
         return ()
 
 
-class array_count:
-    DESCRIPTION = """
-    Retrieve the shape of array class data and count the number of elements
-    获取数组类数据的形状，统计元素数量
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "any_data": (any,),
-                "select_dim":("INT",{"default":0,"min":0,"max":64}),
-            }
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("LIST","INT","INT","INT","INT","INT","INT")
-    RETURN_NAMES = ("shape","image-N","image-H","image-W","image-C","sum_count","sel_count",)
-    FUNCTION = "element_count"
-
-    def element_count(self, any_data, select_dim):
-        n, n1= 1, 1
-        s = [0,0,0,0]
-        try:
-            s = list(any_data.shape)
-        except:
-            print("Warning: This object does not have a shape property, default output is 0")
-        #try:
-        shape = list(any_data.shape)
-        if len(shape) == 0:
-            n, n1= 0, 0
-        else:
-            for i in range(len(shape)):
-                n *= shape[i]
-                if i >= select_dim:
-                    n1 *= shape[i]
-        #except:
-        #    print("Error: The input data does not have array characteristics.")
-        return (s,*s,n,n1)
-
-
 CATEGORY_NAME = "WJNode/Other-node"
 
 
@@ -966,7 +927,6 @@ NODE_CLASS_MAPPINGS = {
     #WJNode/Other-functions
     "Any_Pipe": Any_Pipe,
     "Determine_Type": Determine_Type,
-    "array_count": array_count,
     "get_image_data": get_image_data,
     #WJNode/Other-plugins
     "WAS_Mask_Fill_Region_batch": WAS_Mask_Fill_Region_batch,
