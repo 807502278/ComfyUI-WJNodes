@@ -237,3 +237,8 @@ NODE_CLASS_MAPPINGS = {
     "ApplyEasyOCR_batch": ApplyEasyOCR_batch,
     "load_EasyOCR_model": load_EasyOCR_model,
 }
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "load_EasyOCR_model": "load_EasyOCR_model",
+    "ApplyEasyOCR_batch": "ApplyEasyOCR_batch",
+}

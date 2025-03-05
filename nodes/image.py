@@ -257,58 +257,6 @@ class Save_Image_Out:
 CATEGORY_NAME = "WJNode/ImageEdit"
 
 
-class image_cutter:  # 开发中(已有其它节点)
-    """
-    xy分割图片
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "mask": ("MASK",),
-                "x": ("INT", {"default": 1, min: 1, "step": 1}),
-                "y": ("INT", {"default": 1, min: 1, "step": 1}),
-            },
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE", "LIST")
-    RETURN_NAMES = ("image_batch", "cutter_data")
-    FUNCTION = "cutter_image"
-
-    def cutter_image(self, image, x, y):
-        image_batch = np.array([])
-        n, h, w, c = image.shape
-        height = math.ceil(h / y) * y
-        width = math.ceil(w / x) * x  # 缩放到xy整倍数以便切割
-        image = torch.nn.functional.interpolate(
-            image, size=(height, width), mode="bicubic")
-        image = np.array(tuple(image))
-        if n == 1:
-            image_batch[0] = self.cut_image(image[0], x, y)
-        else:
-            for i in range(n):
-                image_batch = image_batch.append(
-                    self.cut_image(image[i], x, y))
-        print(f"类型：{type(image_batch.shape)}")
-        print(f"形状：{image_batch.shape}")
-        print(f"形状0:{image_batch[0].shape}")
-        image_batch = torch.Size(tuple(image_batch))
-        return (image_batch, (n, x, y))
-
-    def cut_image(image, x, y):  # 开发中
-        h, w, c = image.shape
-        print(f"h:{h},w:{w},c:{c}")
-        image_i = np.array([])
-        y1 = int(h / y)
-        x1 = int(w / x)
-        image_batch = []
-        print(f"y1:{y1},x1:{x1}----------------")
-        for i in range(y):
-            print(np.array_split(image[i], x))
-        return image_batch
-
-
 class adv_crop:
     DESCRIPTION = """
     Advanced Crop Node-20241009
@@ -531,10 +479,21 @@ class adv_crop:
         return [extend_separate, corp_separate]
 
 
-class Accurate_mask_clipping:  # 精确查找遮罩bbox边界 (待开发)
+class Accurate_mask_clipping:
     DESCRIPTION = """
-    Clip the input mask to the specified range of values
-    裁剪输入mask到指定范围的值
+    Accurately find mask boundaries and optionally crop to those boundaries.
+    Features:
+    1. Find the bounding box of non-zero areas in masks
+    2. Apply offset to expand/shrink the bounding box
+    3. Optional cropping to the bounding box
+    4. Adjustable threshold for determining foreground pixels
+    
+    精确查找遮罩边界并可选裁剪
+    功能：
+    1. 查找遮罩中非零区域的边界框
+    2. 应用偏移量扩展/缩小边界框
+    3. 可选择是否裁剪到边界框
+    4. 可调整的灰度阈值用于确定前景像素
     """
 
     @classmethod
@@ -542,16 +501,64 @@ class Accurate_mask_clipping:  # 精确查找遮罩bbox边界 (待开发)
         return {
             "required": {
                 "mask": ("MASK",),
+                "crop": ("BOOLEAN", {"default": False}),
                 "offset": ("INT", {"default": 0, "min": -8192, "max": 8192}),
+                "threshold": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("MASK", )
-    RETURN_NAMES = ("mask", )
+    RETURN_TYPES = ("MASK", "INT", "INT", "INT", "INT")
+    RETURN_NAMES = ("mask", "min_y", "max_y", "min_x", "max_x")
     FUNCTION = "accurate_mask_clipping"
 
-    def accurate_mask_clipping(self, mask, offset):
-        pass
+    def accurate_mask_clipping(self, mask, crop, offset, threshold):
+        """高效查找遮罩边界并可选裁剪"""
+        # 获取非零值的索引
+        if len(mask.shape) == 3:
+            mask_batch = []
+            bbox_data = []
+            
+            for m in mask:
+                # 应用阈值，将低于阈值的像素视为背景
+                thresholded_mask = (m > threshold).float()
+                
+                # 获取非零索引
+                y_indices, x_indices = torch.nonzero(thresholded_mask, as_tuple=True)
+                
+                if len(y_indices) == 0:
+                    # 如果没有前景像素，保持原样
+                    mask_batch.append(m.unsqueeze(0))
+                    bbox_data.append((0, m.shape[0]-1, 0, m.shape[1]-1))
+                    continue
+                    
+                # 计算边界框
+                min_y, max_y = y_indices.min().item(), y_indices.max().item()
+                min_x, max_x = x_indices.min().item(), x_indices.max().item()
+                
+                # 应用偏移
+                min_y = max(min_y - offset, 0)
+                min_x = max(min_x - offset, 0)
+                max_y = min(max_y + offset, m.shape[0]-1)
+                max_x = min(max_x + offset, m.shape[1]-1)
+                
+                bbox_data.append((min_y, max_y, min_x, max_x))
+                
+                # 根据crop参数决定是否裁剪
+                if crop:
+                    cropped = m[min_y:max_y+1, min_x:max_x+1]
+                    mask_batch.append(cropped.unsqueeze(0))
+                else:
+                    mask_batch.append(m.unsqueeze(0))
+            
+            # 计算所有边界框的平均值作为返回值
+            avg_min_y = sum(bbox[0] for bbox in bbox_data) // len(bbox_data)
+            avg_max_y = sum(bbox[1] for bbox in bbox_data) // len(bbox_data)
+            avg_min_x = sum(bbox[2] for bbox in bbox_data) // len(bbox_data)
+            avg_max_x = sum(bbox[3] for bbox in bbox_data) // len(bbox_data)
+            
+            return (torch.cat(mask_batch, dim=0), avg_min_y, avg_max_y, avg_min_x, avg_max_x)
+        else:
+            raise ValueError("输入遮罩维度必须为3 (batch, height, width)")
 
 
 class invert_channel_adv: #
@@ -777,48 +784,43 @@ class invert_channel_adv: #
         return [image, device_image]
 
 
-class merge_image_list:  # 待开发
-    DESCRIPTION = """
-    Support packaging images in batches/images lists/single images/packaging into image batches (ignoring null objects, used in loops).
-    支持将图像批次或图像打包成图像列表，若输入图像列表则(可忽略空对象，用于循环中)
-    """
-
+class ListMerger:
     def __init__(self):
-        self.image_list = []
-
+        self.list1_buffer = []
+        self.list2_buffer = []
+        self.current_index = 0
+    
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "image1": ("IMAGE",),
-                "image2": ("IMAGE",),
-            },
-            "optional": {
+                "list1": ("*",),
+                "list2": ("*",),
+                "is_last": ("BOOLEAN", {"default": False}),  # 标记是否是最后一个元素
             }
         }
+    
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("merged_list",)
+    OUTPUT_IS_LIST = False
+    FUNCTION = "merge_lists"
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image_list",)
-    OUTPUT_IS_LIST = (True,)
-    FUNCTION = "image_list"
 
-    def image_list(self, image1, image2):
-        #未完成
-        return (self.image_list,)
-
-    #    image_list = [image1, image2, image3, image4]
-    #    image_list = self.flatten_array(image_list)
-    #    image_list = list(filter(lambda x: x is not None, image_list))
-    #    return (image_list,)
-
-    # def flatten_array(self, arr):
-    #    flat_arr = []
-    #    for i in arr:
-    #        if isinstance(i, list):
-    #            flat_arr.extend(self.flatten_array(i))
-    #        else:
-    #            flat_arr.append(i)
-    #    return flat_arr
+    def merge_lists(self, list1, list2, is_last):
+        # 将当前元素添加到缓冲区
+        self.list1_buffer.append(list1)
+        self.list2_buffer.append(list2)
+        
+        if is_last:
+            # 最后一个元素时，返回完整的合并列表
+            result = self.list1_buffer + self.list2_buffer
+            # 清空缓冲区，为下一次操作做准备
+            self.list1_buffer = []
+            self.list2_buffer = []
+            return (result,)
+        else:
+            # 不是最后一个元素时，返回None或空列表
+            return ([],)
 
 
 class Bilateral_Filter:
@@ -1119,30 +1121,47 @@ class image_math_value_v2:
     def image_math(self,expression1,expression2,expression3,image_clamp,RGBA_to_RGB,**kwargs):
         #初始化值
         self.clamp = image_clamp
-        #将mask形状与image对齐方便计算
-        try:
-            for k, v in kwargs.items():
-                if v is not None:
-                    if isinstance(v,torch.Tensor): #输入的张量
-                        if v.dim() == 3:
-                            self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)#如果是遮罩则转3通道
-                        elif v.dim() == 4:
-                            if v.shape[-1] == 4 and RGBA_to_RGB: 
-                                self.tensors[k] = v[..., 0:-1] #去掉image的A通道
-                            else: 
-                                self.tensors[k] = v
-                        else: print(f"Warning: The input {k} is not standard image data! (image_math_value_v2)")
-                    else:
-                        self.tensors[k] = v
-        except Exception as e1:
-            print(e1)
-            raise ValueError(f"Error: input error! (image_math_value_v2)")
+        self.process_input(RGBA_to_RGB,kwargs)
 
         return (*self.handle_img(expression1,1),
                 *self.handle_img(expression2,2),
                 *self.handle_img(expression3,3),
                 )
     
+    def process_input(self, RGBA_to_RGB, kwargs):
+        try:
+            # 获取有效的张量输入
+            tensor_inputs = {k: v for k, v in kwargs.items() if v is not None and isinstance(v, torch.Tensor)}
+            if not tensor_inputs:
+                # 如果没有张量输入，直接保存非张量数据
+                self.tensors = {k: v for k, v in kwargs.items() if v is not None}
+                return
+
+            # 确定目标通道数
+            max_channels = max((t.shape[-1] for t in tensor_inputs.values() if t.dim() >= 3), default=3)
+            target_channels = 3 if (max_channels != 4 or RGBA_to_RGB) else 4
+
+            # 处理所有输入
+            for k, v in kwargs.items():
+                if v is None:
+                    continue
+
+                if isinstance(v, torch.Tensor):
+                    if v.dim() == 3:
+                        # 处理遮罩：扩展到目标通道数
+                        self.tensors[k] = v.unsqueeze(-1).expand(-1, -1, -1, target_channels)
+                    elif v.dim() == 4:
+                        # 处理图像：根据需要裁剪或保持原样
+                        self.tensors[k] = v[..., :target_channels] if (v.shape[-1] == 4 and RGBA_to_RGB) else v
+                    else:
+                        print(f"警告：输入 {k} 不是标准图像数据！(维度：{v.dim()})")
+                else:
+                    self.tensors[k] = v
+
+        except Exception as e:
+            print(f"错误详情：{str(e)}")
+            raise ValueError("输入处理错误！(image_math_value_v2)")
+
     def handle_img(self,expression,n=1):
         #初始化输出
         mask,image,data = None,None,None
@@ -1163,7 +1182,7 @@ class image_math_value_v2:
                         image = torch.clamp(image, 0.0, 1.0) 
                     if image.dim() == 3: #如果结果是遮罩，将遮罩作为通道转为图像输出
                         mask = image
-                        image = mask.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        image = mask.unsqueeze(-1).expand(-1, -1, -1, 3)
                         print("Warning: The result may be a mask. (image_math_value_v2)")
                     elif image.dim() == 4: #如果结果是图像，将图像以求均值的方式压缩为遮罩
                         mask = torch.mean(image, dim=3, keepdim=False)
@@ -1230,24 +1249,7 @@ class image_math_value_v1(image_math_value_v2):
     def image_math(self,expression1,image_clamp,RGBA_to_RGB,**kwargs):
         #初始化值
         self.clamp = image_clamp
-        #将mask形状与image对齐方便计算
-        try:
-            for k, v in kwargs.items():
-                if v is not None:
-                    if isinstance(v,torch.Tensor): #输入的张量
-                        if v.dim() == 3:
-                            self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)#如果是遮罩则转3通道
-                        elif v.dim() == 4:
-                            if v.shape[-1] == 4 and RGBA_to_RGB: 
-                                self.tensors[k] = v[..., 0:-1] #去掉image的A通道
-                            else: 
-                                self.tensors[k] = v
-                        else: print(f"Warning: The input {k} is not standard image data! (image_math_value_v2)")
-                    else:
-                        self.tensors[k] = v
-        except Exception as e1:
-            print(e1)
-            raise ValueError(f"Error: input error! (image_math_value_v2)")
+        self.process_input(RGBA_to_RGB,kwargs)
 
         return (*self.handle_img(expression1,1),)
 
@@ -1429,15 +1431,15 @@ NODE_CLASS_MAPPINGS = {
 
     #WJNode/ImageEdit
     "adv_crop": adv_crop,
+    "Accurate_mask_clipping": Accurate_mask_clipping,
     "invert_channel_adv": invert_channel_adv,
     # "ToImageListData": to_image_list_data,
-    # "MergeImageList": merge_image_list,
+    "ListMerger": ListMerger,
     # "ImageChannelBus": image_channel_bus,
     "Bilateral_Filter": Bilateral_Filter,
     "image_math": image_math,
     "image_math_value_v1": image_math_value_v1,
     "image_math_value_v2": image_math_value_v2,
-
 
     #WJNode/video
     "Video_OverlappingSeparation_test": Video_OverlappingSeparation_test,

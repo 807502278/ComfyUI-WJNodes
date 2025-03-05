@@ -412,31 +412,6 @@ class get_image_data:
         return (*shape,shape,*m)
 
 
-class get_image_value: #计算图像的值，******************开发中
-    DESCRIPTION = """
-    Obtain image data
-    获取图像数据
-    若同时输入image和mask,会优先输出image数据
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-            },
-            "optional": {
-                "image":("IMAGE",),
-                "mask":("MASK",),
-            }
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("INT","INT","INT","INT","LIST","INT","INT","FLOAT","FLOAT")
-    RETURN_NAMES = ("N","H","W","C","shape","max_HW","min_HW","max_Value","min_Value",)
-    FUNCTION = "element_count"
-
-    def element_count(self, image = None, mask = None):
-        return ()
-
-
 CATEGORY_NAME = "WJNode/Other-node"
 
 

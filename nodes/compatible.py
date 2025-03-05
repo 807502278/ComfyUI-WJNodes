@@ -50,9 +50,9 @@ class image_math_value:
 
         #遮罩转3通道
         if c is not None:
-            c = c.unsqueeze(-1).repeat(1, 1, 1, 3)
+            c = c.unsqueeze(-1).expand(-1, -1, -1, 3)
         if d is not None:
-            d = d.unsqueeze(-1).repeat(1, 1, 1, 3)
+            d = d.unsqueeze(-1).expand(-1, -1, -1, 3)
 
         try:
             local_vars = locals().copy()
@@ -180,10 +180,12 @@ class image_math_value:
             it is recommended not to open it
     Explanation: The A channel of the image will be automatically removed, 
             and the shape will be the data shape
+    Note: This node has been deprecated, please use image_math-value-v1
 
     expression:表达式
     clamp:如果要继续进行下一次image_math_value建议不打开
     说明：会自动去掉image的A通道，shape为数据形状
+    注意：此节点已被弃用，请使用image_math_value_v1
     """
     @classmethod
     def INPUT_TYPES(s):
@@ -219,9 +221,9 @@ class image_math_value:
 
         #遮罩转3通道
         if c is not None:
-            c = c.unsqueeze(-1).repeat(1, 1, 1, 3)
+            c = c.unsqueeze(-1).expand(-1, -1, -1, 3)
         if d is not None:
-            d = d.unsqueeze(-1).repeat(1, 1, 1, 3)
+            d = d.unsqueeze(-1).expand(-1, -1, -1, 3)
 
         try:
             local_vars = locals().copy()
@@ -249,6 +251,7 @@ class image_math_value_x10:
         1. The A channel of the image can be optionally removed. shape represents the data shape.
         2. Some torch methods are supported. Please note the output type of the image.
         3. Leave the expressions for the unwanted outputs blank to ignore unnecessary calculations. 
+    Note: This node has been deprecated, please use image_math-value-v2
 
     expression:高级表达式
         功能：使用表达式对图像进行数值计算，mask将被视为3通道图像
@@ -260,6 +263,7 @@ class image_math_value_x10:
         1：可选去掉image的A通道，shape为数据形状
         2：支持部分torch方法，请注意image输出类型
         3：不需要的输出对应的表达式请留空，可忽略不必要的计算
+    注意：此节点已被弃用，请使用image_math_value_v2
     """
     def __init__(self):
         self.clamp = True
@@ -292,7 +296,7 @@ class image_math_value_x10:
             if RGBA_to_RGB: #是否去掉image的A通道
                 for k, v in kwargs.items():
                     if v is not None:
-                        if v.dim() == 3: self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        if v.dim() == 3: self.tensors[k] = v.unsqueeze(-1).expand(-1, -1, -1, 3)
                         elif v.dim() == 4: #去掉image的A通道
                             if v.shape[-1] == 4: self.tensors[k] = v[..., 0:-1]
                             else: self.tensors[k] = v
@@ -300,7 +304,7 @@ class image_math_value_x10:
             else:
                 for k, v in kwargs.items():
                     if v is not None:
-                        if v.dim() == 3:  self.tensors[k] = v.unsqueeze(-1).repeat(1, 1, 1, 3)
+                        if v.dim() == 3:  self.tensors[k] = v.unsqueeze(-1).expand(-1, -1, -1, 3)
                         elif v.dim() == 4: #遮罩转3通道
                             if v.shape[-1] == 4:  print(f"Warning: The input {k} is 4-channel image data! (wjnodes-image_math_value_x10)")
                             self.tensors[k] = v
@@ -327,7 +331,7 @@ class image_math_value_x10:
                 if self.clamp: image = torch.clamp(image, 0.0, 1.0)
                 if image.dim() == 3: #如果结果是遮罩
                     mask = image
-                    image = mask.unsqueeze(-1).repeat(1, 1, 1, 3)
+                    image = mask.unsqueeze(-1).expand(-1, -1, -1, 3)
                     print("Warning: The result may be a mask. (wjnodes-image_math_value_x10)")
                 elif image.dim() == 4: 
                     mask = torch.mean(image, dim=3, keepdim=False)
