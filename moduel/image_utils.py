@@ -176,22 +176,18 @@ device_input  = (list(device_list.keys()),
                  {"default": list(device_list.keys())[0]}) #节点输入元组，默认default
 
 
-
 def tensor_to_pil(image):  # Tensor to PIL
     return Image.fromarray(
         np.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
-
 
 def pil_to_tensor(image):  # PIL to Tensor
     return torch.from_numpy(
         np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
-
 def pil_to_mask(image):  # PIL to Mask
     image_np = np.array(image.convert("L")).astype(np.float32) / 255.0
     mask = torch.from_numpy(image_np)
     return 1.0 - mask
-
 
 def mask_to_pil(mask):  # Mask to PIL
     if mask.ndim > 2:
@@ -199,3 +195,50 @@ def mask_to_pil(mask):  # Mask to PIL
     mask_np = mask.cpu().numpy().astype('uint8')
     mask_pil = Image.fromarray(mask_np, mode="L")
     return mask_pil
+
+def clean_data(t, type_name="float"): #清理数据中的特殊值nan/posinf/neginf
+    # 处理None值
+    if t is None:
+        return None
+    
+    # 设置替换值
+    replace_values = {
+        "float": {"nan": 0.0, "posinf": 1.0, "neginf": 0.0},
+        "int": {"nan": 0, "posinf": 255, "neginf": 0},
+        "bool": {"nan": False, "posinf": True, "neginf": False},
+        "boolean": {"nan": False, "posinf": True, "neginf": False}
+    }
+    values = replace_values.get(type_name, replace_values["float"])
+    
+    # 递归处理各种数据类型
+    if isinstance(t, (list, tuple, set)):
+        # 处理列表和元组
+        cleaned = [clean_data(item, type_name) for item in t]
+        return type(t)(cleaned)  # 保持原始类型
+    
+    elif isinstance(t, dict):
+        # 处理字典
+        return {k: clean_data(v, type_name) for k, v in t.items()}
+    
+    elif isinstance(t, torch.Tensor):
+        # 处理张量
+        return torch.nan_to_num(t, 
+                              nan=values["nan"], 
+                              posinf=values["posinf"], 
+                              neginf=values["neginf"])
+    
+    elif isinstance(t, (int, float, bool)):
+        # 处理基本数据类型
+        if isinstance(t, bool):
+            return bool(values["nan"]) if t != t else t  # 处理nan
+        try:
+            if np.isnan(t):
+                return values["nan"]
+            elif np.isinf(t):
+                return values["posinf"] if t > 0 else values["neginf"]
+            return t
+        except:
+            return t
+    
+    # 其他类型直接返回
+    return t
