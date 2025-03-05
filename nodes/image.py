@@ -1,18 +1,19 @@
-from PIL import Image, ImageOps, ImageFilter
 from io import BytesIO
 # from xml.dom import minidom
-import copy
-import torch
-import numpy as np
+from copy import copy
 import os
-import requests
-import math
-from PIL import Image, ImageOps, ImageSequence
 import json
+import math
+import requests
+
+import numpy as np
+from PIL import Image, ImageOps, ImageSequence, ImageFilter
+import torch
+import torch.nn.functional as F
 
 import folder_paths
 import node_helpers
-from ..moduel.image_utils import device_list, device_default
+from ..moduel.image_utils import device_list, device_default, clean_data
 from ..moduel.custom_class import any
 from ..moduel.str_edit import is_safe_eval
 
@@ -774,7 +775,7 @@ class invert_channel_adv: #
     def image_device(self, image, device):
         # Device selection 设备选择
         if device == "Auto":
-            device_image == device_list["default"]
+            device_image = device_list["default"]
             image = image.to(device_image)
         elif device == "Original":
             device_image = image.device
@@ -891,7 +892,7 @@ class Bilateral_Filter:
     def Bilateral_Filter(self,image,diameter,sigma_color,sigma_space):
         import cv2
         image = np.array(image * 255).astype('uint8')
-        image = cv2.Bilateral_Filter(image, diameter, sigma_color, sigma_space)
+        image = cv2.bilateralFilter(image, diameter, sigma_color, sigma_space)
         image = torch.tensor(image).float()/255
         return image
     def Bilateral_Filter_RGBA(self,image,diameter,sigma_color,sigma_space):
@@ -967,7 +968,7 @@ class image_math:
     #批量翻转
     def invert(self,data,inv):
         if isinstance(data,list):
-            data = [i for i in data if inv and data is not None]
+            data = [1-i if inv and i is not None else i for i in data]
         else:
             if inv and data is not None:
                 data = 1-data
@@ -975,6 +976,9 @@ class image_math:
 
     #某个输入为单张时统一数量
     def repeat_mask(self,mask1,mask2):
+        if mask1 is None:
+            if mask2 is None: return None,None
+            else: return mask2,mask2
         if mask1.shape[0] == 1 and mask2.shape[0] != 1:
             mask1 = mask1.repeat(mask2.shape[0],1,1)
         elif mask1.shape[0] != 1 and mask2.shape[0] == 1:
@@ -1063,83 +1067,87 @@ class image_math:
             return mask1
 
 
-class image_math_value_v2:
+class any_math:
     DESCRIPTION = """
-    expression: Advanced expression
-    Function: Perform numerical calculations on images using expressions.
-        The mask will be treated as a 3-channel image.
-    Input:
-        - a~j: Arbitrary inputs as variables
-        - expression1~3: Enter mathematical expressions. The results will be correspondingly output to 1 - 3. Spaces are allowed.
-        - RGBA_to_RGB: When turned on, if the input image is 4-channel, 
-            it will be converted to 3-channel.
-        - clamp: Limit the image values to 0-1. 
-            It is not recommended to turn it on if you want to continue with the next image_math_value.
-    Instructions:
-        1. Note that if the expression result is not an image (tensor), 
-            the result will be output to the corresponding value. 
-            In this case, the image and mask outputs will be empty. 
-            Conversely, the value will be empty.
-        2. Support some Python methods, please pay attention to the output type
-        3. Leave the expressions for the outputs you don't need empty to ignore unnecessary calculations. 
-
-    expression:高级表达式
-        功能：使用表达式对图像进行数值计算，mask将被视为3通道图像
-    输入：
-        a~j：输入任意作为变量
-        expression1~3：输入数学表达式，结果将对应输出到1-3，可包含空格
-        RGBA_to_RGB：打开时如果输入image为4通道则将其转为3通道
-        clamp:限制图像数值为0-1，如果要继续进行下一次image_math_value建议不打开
-    说明：
-        1：注意表达式结果若不是图像(张量)，则结果将输出到对应的value
-            此时image和mask输出将为空，反之value为空
-        2：支持部分python方法，请注意输出类型
-        3：不需要的输出对应的表达式请留空，可忽略不必要的计算
+        expression: Advanced expression
+        Function: Perform numerical calculations on images using expressions.
+            The mask will be treated as a 3-channel image.
+        Input:
+            - a~j: Arbitrary inputs as variables
+            - expression1~3: Enter mathematical expressions. The results will be correspondingly output to 1 - 3. Spaces are allowed.
+            - PreprocessingTensor: Do you want to preprocess the image 
+                (if you need to perform operations on the image, please open it)
+                Preprocessing images will unify batches/sizes/channels, 
+                allowing image and mask operations to be performed
+            - RGBA_to_RGB: When turned on, if the input image is 4-channel, 
+                it will be converted to 3-channel.
+            - clamp: Limit the image values to 0-1. 
+                It is not recommended to turn it on if you want to continue with the next image_math_value.
+        Instructions:
+            1. Note that if the expression result is not an image (tensor), 
+                the result will be output to the corresponding value. 
+                In this case, the image and mask outputs will be empty. 
+                Conversely, the value will be empty.
+            2. Support some Python methods, please pay attention to the output type
+            3. Leave the expressions for the outputs you don't need empty to ignore unnecessary calculations. 
+            4. 中文说明请看 -any_math_v2-
     """
+    required = {
+                "expression":("STRING",{"default":"a+b","multiline": True}),
+                "PreprocessingTensor":("BOOLEAN",{"default":True}),
+                "RGBA_to_RGB":("BOOLEAN",{"default":True}),
+                "image_clamp":("BOOLEAN",{"default":True}),
+                }
+    optional = {"a":(any,),"b":(any,),"c":(any,),"d":(any,)}
+
     def __init__(self):
         self.clamp = True
         self.tensors = {}
 
     @classmethod
     def INPUT_TYPES(s):
-        return {
-            "required": {
-                "expression1":("STRING",{"default":"a+b","multiline": True}),
-                "expression2":("STRING",{"default":"","multiline": True}),
-                "expression3":("STRING",{"default":"","multiline": True}),
-                "RGBA_to_RGB":("BOOLEAN",{"default":True}),
-                "image_clamp":("BOOLEAN",{"default":True}),
-            },
-            "optional": {
-                "a":(any,),"b":(any,),"c":(any,),"d":(any,),"e":(any,),"f":(any,),"g":(any,),"h":(any,),"i":(any,),"j":(any,)
-            }
-        }
+        return {"required":s.required,
+                "optional":s.optional}
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE","MASK",any,"IMAGE","MASK",any,"IMAGE","MASK",any)
-    RETURN_NAMES = ("image1","mask1","value1","image2","mask2","value2","image3","mask3","value3")
+    RETURN_TYPES = ("IMAGE","MASK",any)
+    RETURN_NAMES = ("image1","mask1","value1")
     FUNCTION = "image_math"
-    def image_math(self,expression1,expression2,expression3,image_clamp,RGBA_to_RGB,**kwargs):
+
+    def image_math(self,expression,PreprocessingTensor,image_clamp,RGBA_to_RGB,**kwargs):
         #初始化值
         self.clamp = image_clamp
-        self.process_input(RGBA_to_RGB,kwargs)
+        if PreprocessingTensor: 
+            self.process_input(RGBA_to_RGB,kwargs)
+        else: 
+            self.tensors = kwargs
+        return (*self.handle_img(expression,1),)
 
-        return (*self.handle_img(expression1,1),
-                *self.handle_img(expression2,2),
-                *self.handle_img(expression3,3),
-                )
-    
     def process_input(self, RGBA_to_RGB, kwargs):
         try:
             # 获取有效的张量输入
             tensor_inputs = {k: v for k, v in kwargs.items() if v is not None and isinstance(v, torch.Tensor)}
             if not tensor_inputs:
-                # 如果没有张量输入，直接保存非张量数据
                 self.tensors = {k: v for k, v in kwargs.items() if v is not None}
                 return
 
-            # 确定目标通道数
-            max_channels = max((t.shape[-1] for t in tensor_inputs.values() if t.dim() >= 3), default=3)
-            target_channels = 3 if (max_channels != 4 or RGBA_to_RGB) else 4
+            # 获取张量形状信息并计算目标尺寸
+            shapes = {k: v.shape for k, v in tensor_inputs.items()}
+            batch_sizes = []
+            for s in shapes.values():
+                if len(s) >= 1:  # 确保张量至少有一个维度
+                    batch_sizes.append(s[0])
+                else:
+                    batch_sizes.append(1)
+
+            target_batch = max(batch_sizes)
+            target_height = min(s[1] for s in shapes.values() if len(s) > 1)
+            target_width = min(s[2] for s in shapes.values() if len(s) > 2)
+            target_channels = 3 if (max((s[-1] for s in shapes.values() if len(s) >= 3), default=3) != 4 or RGBA_to_RGB) else 4
+
+            # 检查批次大小
+            multi_batches = {b for b in batch_sizes if b > 1}
+            if len(multi_batches) > 1:
+                print(f"Warning: Multiple different batch sizes detected {multi_batches} May affect the calculation results!")
 
             # 处理所有输入
             for k, v in kwargs.items():
@@ -1147,20 +1155,64 @@ class image_math_value_v2:
                     continue
 
                 if isinstance(v, torch.Tensor):
+                    # 处理维度
+                    if v.dim() == 2:
+                        v = v.unsqueeze(0)
+                    elif v.dim() == 3 and v.shape[-1] != target_channels:
+                        v = v.unsqueeze(-1)
+
+                    # 批次处理
+                    if v.shape[0] < target_batch:
+                        repeat_times = target_batch // v.shape[0]
+                        if repeat_times * v.shape[0] == target_batch:
+                            v = v.repeat(repeat_times, *(1 for _ in range(v.dim()-1)))
+                        else:
+                            v = v.expand(target_batch, *(v.shape[i] for i in range(1, v.dim())))
+
+                    # 尺寸调整
+                    if v.dim() >= 3 and (v.shape[1] != target_height or v.shape[2] != target_width):
+                        if v.dim() == 3:
+                            v = v.unsqueeze(-1)
+                            v = self._resize_tensor(v, target_height, target_width)
+                            v = v.squeeze(-1)
+                        else:
+                            v = self._resize_tensor(v, target_height, target_width)
+
+                    # 通道处理
                     if v.dim() == 3:
-                        # 处理遮罩：扩展到目标通道数
-                        self.tensors[k] = v.unsqueeze(-1).expand(-1, -1, -1, target_channels)
+                        v = v.unsqueeze(-1).expand(-1, -1, -1, target_channels)
                     elif v.dim() == 4:
-                        # 处理图像：根据需要裁剪或保持原样
-                        self.tensors[k] = v[..., :target_channels] if (v.shape[-1] == 4 and RGBA_to_RGB) else v
-                    else:
-                        print(f"警告：输入 {k} 不是标准图像数据！(维度：{v.dim()})")
+                        if v.shape[-1] == 4 and RGBA_to_RGB:
+                            v = v[..., :target_channels]
+                        elif v.shape[-1] == 1:
+                            v = v.expand(-1, -1, -1, target_channels)
+
+                    self.tensors[k] = v
                 else:
                     self.tensors[k] = v
 
         except Exception as e:
-            print(f"错误详情：{str(e)}")
-            raise ValueError("输入处理错误！(image_math_value_v2)")
+            print(f"Error details:{str(e)}")
+            raise ValueError("Preprocessing failed! Please check the image input, such as whether the quantity is consistent(any_math)")
+
+    def _resize_tensor(self, tensor, target_height, target_width):
+        """调整张量尺寸"""
+        return F.interpolate(
+            tensor.permute(0, 3, 1, 2),
+            size=(target_height, target_width),
+            mode='bilinear',
+            align_corners=False
+        ).permute(0, 2, 3, 1)
+
+    def _process_channels(self, tensor, target_channels, RGBA_to_RGB):
+        """处理张量通道"""
+        if tensor.dim() == 3:
+            return tensor.unsqueeze(-1).expand(-1, -1, -1, target_channels)
+        elif tensor.dim() == 4:
+            return tensor[..., :target_channels] if (tensor.shape[-1] == 4 and RGBA_to_RGB) else tensor
+        else:
+            print(f"警告：输入张量维度异常！(维度：{tensor.dim()})")
+            return tensor
 
     def handle_img(self,expression,n=1):
         #初始化输出
@@ -1193,66 +1245,155 @@ class image_math_value_v2:
         return (image,mask,data)
 
 
-class image_math_value_v1(image_math_value_v2):
+class any_math_v2(any_math):
     DESCRIPTION = """
-    expression: Advanced expression
-    Function: Perform numerical calculations on images using expressions.
-        The mask will be treated as a 3-channel image.
-    Input:
-        - a~j: Arbitrary inputs as variables
-        - expression1~3: Enter mathematical expressions. The results will be correspondingly output to 1 - 3. Spaces are allowed.
-        - RGBA_to_RGB: When turned on, if the input image is 4-channel, 
-            it will be converted to 3-channel.
-        - clamp: Limit the image values to 0-1. 
-            It is not recommended to turn it on if you want to continue with the next image_math_value.
-    Instructions:
-        1. Note that if the expression result is not an image (tensor), 
-            the result will be output to the corresponding value. 
-            In this case, the image and mask outputs will be empty. 
-            Conversely, the value will be empty.
-        2. Support some Python methods, please pay attention to the output type
-        3. Leave the expressions for the outputs you don't need empty to ignore unnecessary calculations. 
-
-    expression:高级表达式
-        功能：使用表达式对图像进行数值计算，mask将被视为3通道图像
-    输入：
-        a~j：输入任意作为变量
-        expression：输入数学表达式，可包含空格
-        RGBA_to_RGB：打开时如果输入image为4通道则将其转为3通道
-        clamp:限制图像数值为0-1，如果要继续进行下一次image_math_value建议不打开
-    说明：
-        1：注意表达式结果若不是图像(张量)，则结果将输出到value
-            此时image和mask输出将为空，反之value为空
-        2：支持部分python方法，请注意输出类型
-        3：不需要的输出对应的表达式请留空，可忽略不必要的计算
+        expression:高级表达式
+            功能：使用表达式对图像进行数值计算，mask将被视为3通道图像
+        输入：
+            a~j：输入任意作为变量
+            expression：输入数学表达式，可包含空格
+            PreprocessingTensor:是否预处理图像(若需要对图像进行运算请打开)
+                预处理图像会将批次/大小/通道统一，使image和mask可以进行运算
+            RGBA_to_RGB：打开时如果输入image为4通道则将其转为3通道
+            clamp:限制图像数值为0-1，如果要继续进行下一次image_math_value建议不打开
+        说明：
+            1：注意表达式结果若不是图像(张量)，则结果将输出到对应的value
+                此时image和mask输出将为空，反之value为空
+            2：支持部分python方法，请注意输出类型
+            3：不需要的输出对应的表达式请留空，可忽略不必要的计算
+            4：Please refer to the English explanation -any_math-
     """
-    def __init__(self):
-        self.clamp = True
-        self.tensors = {}
 
+    @classmethod
+    def INPUT_TYPES(s):
+        required = {"expression1":("STRING",{"default":"a+b","multiline": True}),
+                    "expression2":("STRING",{"default":"","multiline": True}),
+                    "expression3":("STRING",{"default":"","multiline": True}),
+                    **s.required}
+        required.pop("expression")
+        return {
+                "required":required,
+                "optional":{**s.optional,
+                    "e":(any,),"f":(any,),"g":(any,),"h":(any,),"i":(any,),"j":(any,)}
+                }
+
+    RETURN_TYPES = ("IMAGE","MASK",any,"IMAGE","MASK",any,"IMAGE","MASK",any)
+    RETURN_NAMES = ("image1","mask1","value1","image2","mask2","value2","image3","mask3","value3")
+    def image_math(self,expression1,expression2,expression,PreprocessingTensor,image_clamp,RGBA_to_RGB,**kwargs):
+        #初始化值
+        self.clamp = image_clamp
+        if PreprocessingTensor: 
+            self.process_input(RGBA_to_RGB,kwargs)
+        else: 
+            self.tensors = kwargs
+
+        return (*self.handle_img(expression1,1),
+                *self.handle_img(expression2,2),
+                *self.handle_img(expression,3),
+                )
+
+
+class image_math_value:
+    DESCRIPTION = """
+    expression: expression
+    clamp: If you want to continue with the next image_math_ralue, 
+            it is recommended not to open it
+    Explanation: The A channel of the image will be automatically removed, 
+            and the shape will be the data shape
+    Note: This node has been deprecated, please use image_math-value-v1
+
+    expression:表达式
+    clamp:如果要继续进行下一次image_math_value建议不打开
+    说明：会自动去掉image的A通道，shape为数据形状
+    注意：此节点已被弃用，请使用image_math_value_v1
+    """
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "expression1":("STRING",{"default":"a+b","multiline": True}),
-                "RGBA_to_RGB":("BOOLEAN",{"default":True}),
-                "image_clamp":("BOOLEAN",{"default":True}),
+                "expression":("STRING",{"default":"a+b","multiline": True}),
+                "clamp":("BOOLEAN",{"default":True}),
             },
             "optional": {
-                "a":(any,),"b":(any,),"c":(any,),"d":(any,)
+                "a":("IMAGE",),
+                "b":("IMAGE",),
+                "c":("MASK",),
+                "d":("MASK",),
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE","MASK",any)
-    RETURN_NAMES = ("image","mask","value")
+    RETURN_TYPES = ("IMAGE","MASK","LIST")
+    RETURN_NAMES = ("image","mask","shape")
     FUNCTION = "image_math"
-    def image_math(self,expression1,image_clamp,RGBA_to_RGB,**kwargs):
-        #初始化值
-        self.clamp = image_clamp
-        self.process_input(RGBA_to_RGB,kwargs)
+    def image_math(self,expression,clamp,
+                   a=None, b=None, c=None, d=None):
+        image = None
+        mask = None
+        s = 0
 
-        return (*self.handle_img(expression1,1),)
+        # 获取所有输入的尺寸并计算目标尺寸
+        shapes = []
+        inputs = {'a': a, 'b': b, 'c': c, 'd': d}
+        for v in inputs.values():
+            if v is not None:
+                shapes.append(v.shape[1:3])  # 只取高度和宽度
+        
+        if shapes:
+            target_height = min(s[0] for s in shapes)
+            target_width = min(s[1] for s in shapes)
 
+            # 处理每个输入
+            for k, v in inputs.items():
+                if v is not None:
+                    # 去掉A通道
+                    if k in ['a', 'b'] and v.shape[-1] == 4:
+                        v = v[..., 0:-1]
+                    
+                    # 调整尺寸
+                    if v.shape[1] != target_height or v.shape[2] != target_width:
+                        v = self._resize_tensor(v, target_height, target_width)
+                    
+                    # 遮罩转3通道
+                    if k in ['c', 'd']:
+                        v = v.unsqueeze(-1).expand(-1, -1, -1, 3)
+                    
+                    inputs[k] = v
+
+        # 更新局部变量
+        a, b, c, d = inputs['a'], inputs['b'], inputs['c'], inputs['d']
+
+        try:
+            local_vars = locals().copy()
+            exec(f"image = {expression}", {}, local_vars)
+            image = local_vars.get("image")
+        except:
+            print("Warning: Invalid expression !, will output null value.")
+
+        if image is not None:
+            if clamp:
+                image = torch.clamp(image, 0.0, 1.0)
+            s = list(image.shape)
+            mask = torch.mean(image, dim=3, keepdim=False)
+        return (image,mask,s)
+
+    def _resize_tensor(self, tensor, target_height, target_width):
+        """调整张量尺寸"""
+        if tensor.dim() == 3:  # 处理mask
+            tensor = tensor.unsqueeze(-1)
+            tensor = F.interpolate(
+                tensor.permute(0, 3, 1, 2),
+                size=(target_height, target_width),
+                mode='bilinear',
+                align_corners=False
+            ).permute(0, 2, 3, 1).squeeze(-1)
+        else:  # 处理image
+            tensor = F.interpolate(
+                tensor.permute(0, 3, 1, 2),
+                size=(target_height, target_width),
+                mode='bilinear',
+                align_corners=False
+            ).permute(0, 2, 3, 1)
+        return tensor
 
 # ------------------video nodes--------------------
 CATEGORY_NAME = "WJNode/video"
@@ -1438,8 +1579,9 @@ NODE_CLASS_MAPPINGS = {
     # "ImageChannelBus": image_channel_bus,
     "Bilateral_Filter": Bilateral_Filter,
     "image_math": image_math,
-    "image_math_value_v1": image_math_value_v1,
-    "image_math_value_v2": image_math_value_v2,
+    "image_math_value": image_math_value,
+    "any_math": any_math,
+    "any_math_v2": any_math_v2,
 
     #WJNode/video
     "Video_OverlappingSeparation_test": Video_OverlappingSeparation_test,
