@@ -1,0 +1,48 @@
+{
+    "RTX_4090":{
+        "memory": 24,  
+        "bandwidth": 1008,  
+        "fp32_tflops": 82.58,
+        "fp16_tflops": 165.16,
+        "int8_tops": 661,
+        "fp8_tflops": 330.4,
+        "NVFP4": "",
+        "mixed_precision_tflops": 43.3,
+        "gemm_tflops": 81.06,
+        "throughput": 6418.5,
+        "latency": 0.52,
+        "mlperf_score": 34.67,
+        "aiperf_score": 62.84
+        },
+    "RTX_4090_D": {
+        "memory": 24,
+        "bandwidth": 787.75,
+        "fp32_tflops": 73.54,
+        "fp16_tflops": 147.08,
+        "int8_tops": "",
+        "fp8_tflops": "",
+        "NVFP4": "",
+        "mixed_precision_tflops": 19.1,
+        "gemm_tflops": 72.54,
+        "throughput": 5301,
+        "latency": 0.6,
+        "mlperf_score": 18.36,
+        "aiperf_score": 30.6
+        },
+    "RTX_4060":{
+        "memory": 8,
+        "bandwidth": 217.1,
+        "fp32_tflops": 15.2,
+        "fp16_tflops": 30.5,
+        "int8_tops": "",
+        "fp8_tflops": 61,
+        "NVFP4": "",
+        "mixed_precision_tflops": 7.38,
+        "gemm_tflops": 27.47,
+        "throughput": 1163.66,
+        "latency": 0.9,
+        "mlperf_score": 6.77,
+        "aiperf_score": 13.4
+        }
+
+}
