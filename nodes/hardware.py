@@ -16,12 +16,12 @@ class Graphics_detection_RTX4090reference:
         "fp16_tflops": 165.16, #rtx4060-30.48 TFLOPS
         "int8_tops": 661, # rtx4060-不支持
         "fp8_tflops": 330.4,  # 估计值，基于FP16的2倍 
-        "mixed_precision_tflops": 150.0,  # 混合精度估计值 rtx4060-7.38 TFLOPS
-        "gemm_tflops": 160.0,  # GEMM矩阵乘法估计值 rtx4060-27.47 TFLOPS
-        "throughput": 5000,  # 吞吐量基准 (样本/秒) rtx4060-1163.66 samples/sec
-        "latency": 5.0,  # 时延基准 (毫秒) rtx4060-0.88 ms
-        "mlperf_score": 1.0,  # MLPerf相对分数 rtx4060-6.77
-        "aiperf_score": 1.0  # AIPerf相对分数 rtx4060-13.40
+        "mixed_precision_tflops": 43.3,  # 混合精度估计值 rtx4060-7.38 TFLOPS
+        "gemm_tflops": 81.06,  # GEMM矩阵乘法估计值 rtx4060-27.47 TFLOPS
+        "throughput": 6418.5,  # 吞吐量基准 (样本/秒) rtx4060-1163.66 samples/sec
+        "latency": 0.52,  # 时延基准 (毫秒) rtx4060-0.88 ms
+        "mlperf_score": 34.672,  # MLPerf相对分数 rtx4060-6.77
+        "aiperf_score": 62.843  # AIPerf相对分数 rtx4060-13.40
     }
     
     DESCRIPTION = """
