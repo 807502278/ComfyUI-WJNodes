@@ -3,27 +3,32 @@ import platform
 import os
 import psutil
 import time
+import json
 from ..moduel.image_utils import device_list
 
 CATEGORY_NAME = "WJNode/Other-node"
 
-class Graphics_detection_RTX4090reference:
-    # RTX 4090 基准数据
-    RTX_4090_SPECS = {
+
+
+
+
+class Graphics_Detection_Reference:
+    RTX_4090 = {
         "memory": 24,  # 总显存GB rtx4060-8.00 GB
         "bandwidth": 1008,  # 显存带宽GB/s rtx4060-217.09 GB/s
         "fp32_tflops": 82.58, # rtx4060-14.84 TFLOPS
         "fp16_tflops": 165.16, #rtx4060-30.48 TFLOPS
         "int8_tops": 661, # rtx4060-不支持
         "fp8_tflops": 330.4,  # 估计值，基于FP16的2倍 
+        "NVFP4": None,
         "mixed_precision_tflops": 43.3,  # 混合精度估计值 rtx4060-7.38 TFLOPS
         "gemm_tflops": 81.06,  # GEMM矩阵乘法估计值 rtx4060-27.47 TFLOPS
         "throughput": 6418.5,  # 吞吐量基准 (样本/秒) rtx4060-1163.66 samples/sec
         "latency": 0.52,  # 时延基准 (毫秒) rtx4060-0.88 ms
-        "mlperf_score": 34.672,  # MLPerf相对分数 rtx4060-6.77
-        "aiperf_score": 62.843  # AIPerf相对分数 rtx4060-13.40
+        "mlperf_score": 34.67,  # MLPerf相对分数 rtx4060-6.77
+        "aiperf_score": 62.84  # AIPerf相对分数 rtx4060-13.40
     }
-    
+
     DESCRIPTION = """
     用于简单检测显卡各项运算能力，包括:
     - 硬件信息
@@ -58,9 +63,42 @@ class Graphics_detection_RTX4090reference:
     @classmethod
     def INPUT_TYPES(s):
         device_select = list(device_list.keys())[1:]
+        
+        # 读取硬件数据文件夹中的所有JSON文件
+        hardware_data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "hardware_data")
+        reference_gpu_options = []
+        
+        # 遍历文件夹中的所有JSON文件
+        if os.path.exists(hardware_data_path):
+            for file_name in os.listdir(hardware_data_path):
+                if file_name.endswith(".json"):
+                    file_path = os.path.join(hardware_data_path, file_name)
+                    prefix = file_name.replace(".json", "")
+                    
+                    try:
+                        # 读取JSON文件内容
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            
+                        # 如果文件不为空，提取所有键作为GPU型号
+                        if data:
+                            for gpu_model in data.keys():
+                                reference_gpu_options.append(f"{prefix}/{gpu_model}")
+                        else:
+                            # 如果文件为空，添加一个默认选项
+                            reference_gpu_options.append(f"{prefix}/**To be added**")
+                    except Exception as e:
+                        # 如果读取失败，添加一个默认选项
+                        reference_gpu_options.append(f"{prefix}/**To be added**")
+        
+        # 如果没有找到任何选项，添加默认选项
+        if not reference_gpu_options:
+            reference_gpu_options = ["Nvidia/RTX_4090"]
+        
         return {
             "required": {
                 "device": (device_select, {"default": device_select[-1]}),
+                "reference_gpu": (reference_gpu_options, {"default": reference_gpu_options[0]}),
                 "test_items": (["all",  # 所有测试
                                 "basic",  # 基础信息检测
                                 "precision", #混合精度性能测试
@@ -79,7 +117,7 @@ class Graphics_detection_RTX4090reference:
     FUNCTION = "get_info"
     OUTPUT_NODE = True
 
-    def get_info(self, device, test_items, test_batch, language):
+    def get_info(self, device, reference_gpu, test_items, test_batch, language):
         # 初始化
         device_str = device
         device = torch.device(device)
@@ -87,6 +125,24 @@ class Graphics_detection_RTX4090reference:
         test_loops = test_batch
         batch_size = 16
         matrix_size = 4096
+        
+        # 加载参考GPU数据
+        reference_data = self.RTX_4090  # 默认使用RTX 4090作为备用
+        try:
+            if "/" in reference_gpu:
+                file_prefix, gpu_model = reference_gpu.split("/")
+                if gpu_model != "To be added":
+                    hardware_data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "hardware_data")
+                    file_path = os.path.join(hardware_data_path, f"{file_prefix}.json")
+                    
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    
+                    if gpu_model in data:
+                        reference_data = data[gpu_model]
+                        info.append(f"Using {file_prefix}/{gpu_model} as reference")
+        except Exception as e:
+            info.append(f"Failed to load reference GPU data: {str(e)}. Using default RTX 4090 data.")
 
         # 若检测cpu则减少参数量
         if device_str == "cpu":
@@ -121,14 +177,23 @@ class Graphics_detection_RTX4090reference:
             "AIPerf Score": "AIPerf分数"
         }
         
-        def add_info(title, content, rtx4090_value=None):
+        # 语言处理辅助函数
+        def get_text(cn_text, en_text):
+            return cn_text if language == "中文" else en_text
+        
+        def add_info(title, content, reference_value=None):
             # 根据语言选择标题
             display_title = title_map.get(title, title) if language == "中文" else title
             
-            if rtx4090_value is not None:
-                percentage = (float(content.split()[0]) / rtx4090_value) * 100
-                vs_text = "对比4090" if language == "中文" else "vs 4090"
-                info.append(f"{display_title}: {content} ({vs_text}: {percentage:.1f}%)")
+            if reference_value is not None:
+                # 对于时延（latency），较低的值表示更好的性能，所以需要反转百分比计算
+                if title == "Latency":
+                    percentage = (reference_value / float(content.split()[0])) * 100
+                else:
+                    percentage = (float(content.split()[0]) / reference_value) * 100
+                vs_text = get_text("对比参考", "vs reference")
+                ref_gpu_name = reference_gpu.split("/")[1] if "/" in reference_gpu else "RTX_4090"
+                info.append(f"{display_title}: {content} ({vs_text} {ref_gpu_name}: {percentage:.1f}%)")
             else:
                 info.append(f"{display_title}: {content}")
         
@@ -143,7 +208,7 @@ class Graphics_detection_RTX4090reference:
                 add_info("GPU Device", gpu_name)
                 add_info("Architecture", f"Compute {compute_capability[0]}.{compute_capability[1]}")
                 add_info("CUDA Version", torch.version.cuda)
-                add_info("Total Memory", f"{total_memory:.2f} GB", self.RTX_4090_SPECS["memory"])
+                add_info("Total Memory", f"{total_memory:.2f} GB", reference_data.get("memory"))
                 #add_info("Memory Available", f"{free_memory:.2f} GB")
                 
                 # 获取更多GPU信息
@@ -166,9 +231,7 @@ class Graphics_detection_RTX4090reference:
                 ("FP16", torch.float16),
                 ("BF16", torch.bfloat16),
                 ("FP8", "fp8"),  # 新增FP8测试
-                ("INT8", torch.int8),
-                ("INT4", torch.quint4x2),
-                ("NF4", "nf4")
+                ("INT8", torch.int8)
             ]
             
             for dtype_name, dtype in dtypes:
@@ -179,8 +242,7 @@ class Graphics_detection_RTX4090reference:
                         x = torch.randint(-128, 127, (size, size), device=device)
                     elif dtype == "fp8":
                         try:
-                            import torch.cuda.fp8_e4m3_tensor as fp8e4m3
-                            x = fp8e4m3.from_float(x)
+                            x = torch.float8_e4m3fn(x)
                             y = x.clone()
                             
                             torch.cuda.synchronize()
@@ -196,52 +258,16 @@ class Graphics_detection_RTX4090reference:
                                 tflops_list.append(ops / (1e12))
                             tflops = sum(tflops_list) / len(tflops_list)
                             tflops = ops / (1e12)
-                            perf_title = f"{dtype_name} {'性能' if language == '中文' else 'Performance'}"
-                            add_info(perf_title, f"{tflops:.2f} TFLOPS", self.RTX_4090_SPECS["fp8_tflops"])
+                            perf_title = f"{dtype_name} {get_text('性能', 'Performance')}"
+                            add_info(perf_title, f"{tflops:.2f} TFLOPS", reference_data.get("fp8_tflops"))
                             continue
                         except (ImportError, AttributeError):
-                            support_text = "否 (不支持FP8)" if language == "中文" else "No (FP8 not supported)"
-                            add_info(f"{dtype_name} {'支持' if language == '中文' else 'Support'}", support_text)
-                            continue
-                    elif dtype == "nf4":
-                        # NF4 特殊处理
-                        try:
-                            from transformers.utils.bitsandbytes import get_keys_to_not_convert, replace_with_bnb_linear
-                            import bitsandbytes as bnb
-
-                            # 创建一个简单的线性层用于测试
-                            linear = torch.nn.Linear(size, size).to(device)
-                            # 转换为 NF4
-                            linear_4bit = replace_with_bnb_linear(
-                                linear, 
-                                compute_dtype=torch.float16,
-                                compress_statistics=True,
-                                quant_type="nf4"
-                            )
-                            # 性能测试
-                            x = x.to(torch.float16)
-                            torch.cuda.synchronize()
-                            tflops_list = []
-                            for loop in range(test_loops):
-                                start_time = time.time()
-                                for _ in range(10):
-                                    z = linear_4bit(x)
-                                    torch.cuda.synchronize()
-                                end_time = time.time()
-
-                                ops = (2 * size**3 * 10) / (end_time - start_time)
-                                tflops_list.append(ops / (1e12))
-                            tflops = sum(tflops_list) / len(tflops_list)
-                            tflops = ops / (1e12)
-                            perf_title = f"{dtype_name} {'性能' if language == '中文' else 'Performance'}"
-                            add_info(perf_title, f"{tflops:.2f} TFLOPS")
-                            continue
-                        except ImportError:
-                            support_text = "否 (未安装bitsandbytes)" if language == "中文" else "No (bitsandbytes not installed)"
-                            add_info(f"{dtype_name} {'支持' if language == '中文' else 'Support'}", support_text)
+                            support_text = get_text("否 (不支持FP8)", "No (FP8 not supported)")
+                            add_info(f"{dtype_name} {get_text('支持', 'Support')}", support_text)
                             continue
 
-                    if dtype != torch.float32 and dtype != "nf4":
+
+                    if dtype != torch.float32:
                         x = x.to(dtype)
                     y = x.clone()
                     
@@ -262,19 +288,19 @@ class Graphics_detection_RTX4090reference:
                     
                     # 获取对比基准
                     if dtype_name == "FP32":
-                        baseline = self.RTX_4090_SPECS["fp32_tflops"]
+                        baseline = reference_data.get("fp32_tflops")
                     elif dtype_name == "FP16":
-                        baseline = self.RTX_4090_SPECS["fp16_tflops"]
+                        baseline = reference_data.get("fp16_tflops")
                     elif dtype_name == "INT8":
-                        baseline = self.RTX_4090_SPECS["int8_tops"]
+                        baseline = reference_data.get("int8_tops")
                     else:
                         baseline = None
                     
-                    perf_title = f"{dtype_name} {'性能' if language == '中文' else 'Performance'}"
+                    perf_title = f"{dtype_name} {get_text('性能', 'Performance')}"
                     add_info(perf_title, f"{tflops:.2f} TFLOPS", baseline)
                 except Exception as e:
-                    support_text = "否" if language == "中文" else "No"
-                    add_info(f"{dtype_name} {'支持' if language == '中文' else 'Support'}", support_text)
+                    support_text = get_text("否", "No")
+                    add_info(f"{dtype_name} {get_text('支持', 'Support')}", support_text)
         
         # 显存带宽测试
         if test_items in ["all", "memory"]:
@@ -293,11 +319,11 @@ class Graphics_detection_RTX4090reference:
                     
                     bandwidth_list.append((size * size * 4 * 20) / (end_time - start_time) / (1024**3))  # GB/s
                 bandwidth = sum(bandwidth_list) / len(bandwidth_list)
-                bandwidth_title = "显存带宽" if language == "中文" else "Memory Bandwidth"
-                add_info(bandwidth_title, f"{bandwidth:.2f} GB/s", self.RTX_4090_SPECS["bandwidth"])
+                bandwidth_title = get_text("显存带宽", "Memory Bandwidth")
+                add_info(bandwidth_title, f"{bandwidth:.2f} GB/s", reference_data.get("bandwidth"))
             except Exception as e:
-                test_title = "显存带宽测试" if language == "中文" else "Memory Bandwidth Test"
-                fail_text = f"失败: {str(e)}" if language == "中文" else f"Failed: {str(e)}"
+                test_title = get_text("显存带宽测试", "Memory Bandwidth Test")
+                fail_text = get_text(f"失败: {str(e)}", f"Failed: {str(e)}")
                 add_info(test_title, fail_text)
         
         # Tensor Core 特殊测试
@@ -319,27 +345,25 @@ class Graphics_detection_RTX4090reference:
                     tc_flops = (2 * size**3 * 10) / (end_time - start_time)
                     tc_tflops_list.append(tc_flops / (1e12))
                 tc_tflops = sum(tc_tflops_list) / len(tc_tflops_list)
-                tc_title = "Tensor Core性能" if language == "中文" else "Tensor Core Performance"
-                add_info(tc_title, f"{tc_tflops:.2f} TFLOPS", self.RTX_4090_SPECS["fp16_tflops"])
+                tc_title = get_text("Tensor Core性能", "Tensor Core Performance")
+                add_info(tc_title, f"{tc_tflops:.2f} TFLOPS", reference_data.get("fp16_tflops"))
             except Exception as e:
-                test_title = "Tensor Core测试" if language == "中文" else "Tensor Core Test"
-                fail_text = f"失败: {str(e)}" if language == "中文" else f"Failed: {str(e)}"
+                test_title = get_text("Tensor Core测试", "Tensor Core Test")
+                fail_text = get_text(f"失败: {str(e)}", f"Failed: {str(e)}")
                 add_info(test_title, fail_text)
         
 
         # AI性能测试
         if test_items in ["all", "ai"] and device_str != "cpu":
             # 添加分隔线
-            ai_header = "AI性能测试" if language == "中文" else "AI Performance Tests"
+            ai_header = get_text("AI性能测试", "AI Performance Tests")
             info.append(f"\n--- {ai_header} ---")
             
             # 混合精度测试
             try:
                 size = matrix_size // 2  # 减小矩阵大小以适应混合精度测试
                 batch = batch_size
-                
-                # 创建FP32和FP16混合的测试 - 确保维度匹配
-                # 第一个矩阵乘法: (batch, size, size) @ (batch, size, size) -> (batch, size, size)
+                # 创建FP32和FP16混合的测试 - 确保维度匹配，第一个矩阵乘法: (batch, size, size) @ (batch, size, size) -> (batch, size, size)
                 x_fp32 = torch.randn(batch, size, size, device=device, dtype=torch.float32)
                 x_fp16 = torch.randn(batch, size, size, device=device, dtype=torch.float16)
                 
@@ -360,14 +384,13 @@ class Graphics_detection_RTX4090reference:
                     mixed_tflops_list.append(ops / (1e12))
                 
                 mixed_tflops = sum(mixed_tflops_list) / len(mixed_tflops_list)
-                add_info("Mixed Precision Performance", f"{mixed_tflops:.2f} TFLOPS", self.RTX_4090_SPECS["mixed_precision_tflops"])
+                add_info("Mixed Precision Performance", f"{mixed_tflops:.2f} TFLOPS", reference_data.get("mixed_precision_tflops"))
             except Exception as e:
-                fail_text = f"失败: {str(e)}" if language == "中文" else f"Failed: {str(e)}"
+                fail_text = get_text(f"失败: {str(e)}", f"Failed: {str(e)}")
                 add_info("Mixed Precision Performance", fail_text)
             
-            # GEMM矩阵乘法测试
+            # GEMM矩阵乘法测试，使用不同大小的矩阵进行GEMM测试
             try:
-                # 使用不同大小的矩阵进行GEMM测试
                 gemm_sizes = [int(matrix_size/4), int(matrix_size/2), matrix_size]
                 gemm_results = []
                 
@@ -381,27 +404,22 @@ class Graphics_detection_RTX4090reference:
                         c = torch.matmul(a, b)
                         torch.cuda.synchronize()
                     end_time = time.time()
-                    
                     # 计算GEMM性能 (TFLOPS)
                     ops = (2 * gemm_size**3 * 10) / (end_time - start_time)
                     gemm_tflops = ops / (1e12)
                     gemm_results.append(gemm_tflops)
                 
                 avg_gemm_tflops = sum(gemm_results) / len(gemm_results)
-                add_info("GEMM Performance", f"{avg_gemm_tflops:.2f} TFLOPS", self.RTX_4090_SPECS["gemm_tflops"])
+                add_info("GEMM Performance", f"{avg_gemm_tflops:.2f} TFLOPS", reference_data.get("gemm_tflops"))
             except Exception as e:
-                fail_text = f"失败: {str(e)}" if language == "中文" else f"Failed: {str(e)}"
+                fail_text = get_text(f"失败: {str(e)}", f"Failed: {str(e)}")
                 add_info("GEMM Performance", fail_text)
             
             # 吞吐量测试
             try:
-                # 模拟推理吞吐量测试
                 batch = batch_size
                 input_size = int(matrix_size/20)
-                
-                # 创建模拟输入数据
                 inputs = torch.randn(batch, 3, input_size, input_size, device=device)
-                
                 # 创建一个简单的卷积网络模拟推理
                 model = torch.nn.Sequential(
                     torch.nn.Conv2d(3, 64, kernel_size=3, padding=1),
@@ -416,12 +434,10 @@ class Graphics_detection_RTX4090reference:
                     torch.nn.Flatten(),
                     torch.nn.Linear(256, 1000)
                 ).to(device)
-                
                 # 预热
                 for _ in range(5):
                     _ = model(inputs)
                 torch.cuda.synchronize()
-                
                 # 测量吞吐量
                 iterations = 20
                 start_time = time.time()
@@ -429,11 +445,9 @@ class Graphics_detection_RTX4090reference:
                     _ = model(inputs)
                 torch.cuda.synchronize()
                 end_time = time.time()
-                
                 # 计算吞吐量 (样本/秒)
                 throughput = (batch * iterations) / (end_time - start_time)
-                add_info("Throughput", f"{throughput:.2f} samples/sec", self.RTX_4090_SPECS["throughput"])
-                
+                add_info("Throughput", f"{throughput:.2f} samples/sec", reference_data.get("throughput"))
                 # 测量时延
                 latency_iterations = 50
                 latency_times = []
@@ -445,9 +459,9 @@ class Graphics_detection_RTX4090reference:
                     latency_times.append((end_time - start_time) * 1000)  # 转换为毫秒
                 
                 avg_latency = sum(latency_times) / len(latency_times)
-                add_info("Latency", f"{avg_latency:.2f} ms", self.RTX_4090_SPECS["latency"])
+                add_info("Latency", f"{avg_latency:.2f} ms", reference_data.get("latency"))
             except Exception as e:
-                fail_text = f"失败: {str(e)}" if language == "中文" else f"Failed: {str(e)}"
+                fail_text = get_text(f"失败: {str(e)}", f"Failed: {str(e)}")
                 add_info("Throughput", fail_text)
                 add_info("Latency", fail_text)
             
@@ -495,7 +509,7 @@ class Graphics_detection_RTX4090reference:
                 # 计算相对MLPerf分数
                 mlperf_time = mlperf_end - mlperf_start
                 mlperf_score = (mlperf_batch * mlperf_iterations) / mlperf_time / 100.0  # 归一化分数
-                add_info("MLPerf Score", f"{mlperf_score:.2f} (relative)", self.RTX_4090_SPECS["mlperf_score"])
+                add_info("MLPerf Score", f"{mlperf_score:.2f} (relative)", reference_data.get("mlperf_score"))
                 
                 # 模拟AIPerf测试 (使用更大批次和更复杂模型)
                 aiperf_batch = 16
@@ -517,15 +531,15 @@ class Graphics_detection_RTX4090reference:
                 # 计算相对AIPerf分数
                 aiperf_time = aiperf_end - aiperf_start
                 aiperf_score = (aiperf_batch * aiperf_iterations) / aiperf_time / 50.0  # 归一化分数
-                add_info("AIPerf Score", f"{aiperf_score:.2f} (relative)", self.RTX_4090_SPECS["aiperf_score"])
+                add_info("AIPerf Score", f"{aiperf_score:.2f} (relative)", reference_data.get("aiperf_score"))
                 
             except Exception as e:
-                fail_text = f"失败: {str(e)}" if language == "中文" else f"Failed: {str(e)}"
+                fail_text = get_text(f"失败: {str(e)}", f"Failed: {str(e)}")
                 add_info("MLPerf Score", fail_text)
                 add_info("AIPerf Score", fail_text)
         
         result = "\n".join(info)
-        header = "\n=== 设备性能测试结果 ===" if language == "中文" else "\n=== Device Performance Test Results ==="
+        header = get_text("\n=== 设备性能测试结果 ===", "\n=== Device Performance Test Results ===")
         footer = "==========================="
         print(header)
         print("\n"+result)
@@ -535,5 +549,5 @@ class Graphics_detection_RTX4090reference:
         return (result,)
 
 NODE_CLASS_MAPPINGS = {
-    "Graphics_detection_RTX4090reference": Graphics_detection_RTX4090reference,
+    "Graphics_Detection_Reference": Graphics_Detection_Reference,
 }
