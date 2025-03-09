@@ -8,16 +8,13 @@ from ..moduel.image_utils import device_list
 
 CATEGORY_NAME = "WJNode/Other-node"
 
-
-
-
-
 class Graphics_Detection_Reference:
     RTX_4090 = {
         "memory": 24,  # 总显存GB rtx4060-8.00 GB
         "bandwidth": 1008,  # 显存带宽GB/s rtx4060-217.09 GB/s
         "fp32_tflops": 82.58, # rtx4060-14.84 TFLOPS
         "fp16_tflops": 165.16, #rtx4060-30.48 TFLOPS
+        "bf16_tflops": 165.16,
         "int8_tops": 661, # rtx4060-不支持
         "fp8_tflops": 330.4,  # 估计值，基于FP16的2倍 
         "NVFP4": None,
@@ -131,7 +128,7 @@ class Graphics_Detection_Reference:
         try:
             if "/" in reference_gpu:
                 file_prefix, gpu_model = reference_gpu.split("/")
-                if gpu_model != "To be added":
+                if gpu_model != "**To be added**":
                     hardware_data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "hardware_data")
                     file_path = os.path.join(hardware_data_path, f"{file_prefix}.json")
                     
@@ -140,7 +137,7 @@ class Graphics_Detection_Reference:
                     
                     if gpu_model in data:
                         reference_data = data[gpu_model]
-                        info.append(f"Using {file_prefix}/{gpu_model} as reference")
+                        info.append(f"Refer to: {gpu_model} as reference")
         except Exception as e:
             info.append(f"Failed to load reference GPU data: {str(e)}. Using default RTX 4090 data.")
 
@@ -153,7 +150,7 @@ class Graphics_Detection_Reference:
 
         # 中英文标题映射
         title_map = {
-            "GPU Device": "GPU设备",
+            "Current GPU Device": "当前GPU设备",
             "Architecture": "架构",
             "CUDA Version": "CUDA版本",
             "Total Memory": "总显存",
@@ -185,36 +182,46 @@ class Graphics_Detection_Reference:
             # 根据语言选择标题
             display_title = title_map.get(title, title) if language == "中文" else title
             
-            if reference_value is not None:
-                # 对于时延（latency），较低的值表示更好的性能，所以需要反转百分比计算
-                if title == "Latency":
-                    percentage = (reference_value / float(content.split()[0])) * 100
-                else:
-                    percentage = (float(content.split()[0]) / reference_value) * 100
-                vs_text = get_text("对比参考", "vs reference")
-                ref_gpu_name = reference_gpu.split("/")[1] if "/" in reference_gpu else "RTX_4090"
+            
+            if reference_value is None: #若不是需要对比的数值
+                if title == "Latency": # 时延（latency）不计算百分比
+                    info.append(f"{display_title}: {content}")
+                else: #其它数据直接打印
+                    info.append(f"{display_title}: {content}")
+            else: #计算百分比
+                percentage = (float(content.split()[0]) / reference_value) * 100
+                vs_text = get_text("相当于", "Equivalent to")
+                ref_gpu_name = reference_gpu.split("/")[1]
+                if ref_gpu_name == "**To be added**": ref_gpu_name = "RTX_4090"
                 info.append(f"{display_title}: {content} ({vs_text} {ref_gpu_name}: {percentage:.1f}%)")
-            else:
-                info.append(f"{display_title}: {content}")
+
         
         # 基础信息检测
         if test_items in ["all", "basic"]:
             if device.type == "cuda":
-                gpu_name = torch.cuda.get_device_name()
-                total_memory = torch.cuda.get_device_properties(device).total_memory/1024**3
-                free_memory = torch.cuda.memory_allocated()/1024**3
+                gpu_name = torch.cuda.get_device_name() #设备名称
+                total_memory = torch.cuda.get_device_properties(device).total_memory/1024**3 #总显存大小
+                free_memory = torch.cuda.memory_allocated()/1024**3 #当前可用显存
                 compute_capability = torch.cuda.get_device_capability()
-                
-                add_info("GPU Device", gpu_name)
+                # 检测是否是4090/4090D魔改版
+                if "RTX 4090" in gpu_name :
+                    if total_memory > 79.0:
+                        add_info("GPU Device", gpu_name+" 至尊魔改版")
+                    if total_memory > 47.0:
+                        add_info("GPU Device", gpu_name+" 魔改版")
+                else:
+                    add_info("GPU Device", gpu_name)
+                # 架构和cuda版本
                 add_info("Architecture", f"Compute {compute_capability[0]}.{compute_capability[1]}")
                 add_info("CUDA Version", torch.version.cuda)
-                add_info("Total Memory", f"{total_memory:.2f} GB", reference_data.get("memory"))
-                #add_info("Memory Available", f"{free_memory:.2f} GB")
-                
                 # 获取更多GPU信息
                 gpu_props = torch.cuda.get_device_properties(device)
                 add_info("Max Threads Per Block", str(gpu_props.max_threads_per_multi_processor))
                 add_info("Multi-Processor Count", str(gpu_props.multi_processor_count))
+                # 显存对比
+                if device.type != "cpu":
+                    add_info("Total Memory", f"{total_memory:.2f} GB", reference_data.get("memory"))
+
             elif device.type == "cpu":
                 add_info("CPU Device", platform.processor())
                 add_info("CPU Cores", str(os.cpu_count()))
@@ -266,11 +273,9 @@ class Graphics_Detection_Reference:
                             add_info(f"{dtype_name} {get_text('支持', 'Support')}", support_text)
                             continue
 
-
                     if dtype != torch.float32:
                         x = x.to(dtype)
                     y = x.clone()
-                    
                     # 性能测试
                     torch.cuda.synchronize()
                     tflops_list = []
@@ -280,28 +285,26 @@ class Graphics_Detection_Reference:
                             z = x @ y
                             torch.cuda.synchronize()
                         end_time = time.time()
-                        
                         # 计算TFLOPS/TOPS
                         ops = (2 * size**3 * 10) / (end_time - start_time)
                         tflops_list.append(ops / (1e12))
                     tflops = sum(tflops_list) / len(tflops_list)
-                    
                     # 获取对比基准
                     if dtype_name == "FP32":
                         baseline = reference_data.get("fp32_tflops")
                     elif dtype_name == "FP16":
                         baseline = reference_data.get("fp16_tflops")
+                    elif dtype_name == "BF16":
+                        baseline = reference_data.get("bf16_tflops")
                     elif dtype_name == "INT8":
                         baseline = reference_data.get("int8_tops")
                     else:
                         baseline = None
-                    
                     perf_title = f"{dtype_name} {get_text('性能', 'Performance')}"
                     add_info(perf_title, f"{tflops:.2f} TFLOPS", baseline)
                 except Exception as e:
                     support_text = get_text("否", "No")
                     add_info(f"{dtype_name} {get_text('支持', 'Support')}", support_text)
-        
         # 显存带宽测试
         if test_items in ["all", "memory"]:
             try:

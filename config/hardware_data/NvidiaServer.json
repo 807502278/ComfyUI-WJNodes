@@ -1,0 +1,33 @@
+{
+    "V100":{
+        "memory": 32,  
+        "bandwidth": 537,  
+        "fp32_tflops": 44,
+        "fp16_tflops": 85,
+        "bf16_tflops": 82,
+        "int8_tops": "",
+        "fp8_tflops": "",
+        "NVFP4": "",
+        "mixed_precision_tflops": 25,
+        "gemm_tflops": 50,
+        "throughput": 4000,
+        "latency": 0.8,
+        "mlperf_score": 23,
+        "aiperf_score": 39
+        },
+    "Tesla T4": {
+        "memory": 14.6,
+        "bandwidth": 220,
+        "fp32_tflops": 4,
+        "fp16_tflops": 21.5,
+        "int8_tops": "",
+        "fp8_tflops": "",
+        "NVFP4": "",
+        "mixed_precision_tflops": 1.75,
+        "gemm_tflops": 18.5,
+        "throughput": 1038,
+        "latency": 4.2,
+        "mlperf_score": 4.8,
+        "aiperf_score": 11.3
+        }
+}
