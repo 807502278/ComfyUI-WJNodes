@@ -1,0 +1,5 @@
+**/__pycache__
+/.vscode
+/other
+!Other\nodes_temp
+/folder_paths.py
