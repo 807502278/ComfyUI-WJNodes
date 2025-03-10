@@ -4,6 +4,7 @@ from ..moduel.list_edit import random_select
 
 CATEGORY_NAME = "WJNode/Prompt"
 
+
 class Random_Select_Prompt:
     DESCRIPTION = """
     """
@@ -42,7 +43,6 @@ class Random_Select_Prompt:
             str_list = list(set(str_list))
         str_list = random_select(str_list, select_number, random_seed, allow_duplicates, keep_order)
         return (str_edit.list_to_str(str_list),str_list)
-
 
 
 NODE_CLASS_MAPPINGS = {

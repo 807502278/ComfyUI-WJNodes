@@ -1293,7 +1293,7 @@ class any_math_v2(any_math):
                 )
 
 
-class image_math_value:
+class image_ValueMath:
     DESCRIPTION = """
     expression: expression
     clamp: If you want to continue with the next image_math_ralue, 
@@ -1579,7 +1579,7 @@ NODE_CLASS_MAPPINGS = {
     # "ImageChannelBus": image_channel_bus,
     "Bilateral_Filter": Bilateral_Filter,
     "image_math": image_math,
-    "image_math_value": image_math_value,
+    "image_ValueMath": image_ValueMath,
     "any_math": any_math,
     "any_math_v2": any_math_v2,
 
