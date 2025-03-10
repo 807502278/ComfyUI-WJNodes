@@ -6,6 +6,18 @@ import time
 import json
 from ..moduel.image_utils import device_list
 
+refit = {
+    "RTX 5090":{127:"疯狗版",63:"至尊版"},
+    "RTX 4090":{79:"疯狗版",47:"至尊版"},
+    "RTX 4080":{15:"豪华版"},
+    "RTX 4060 Ti":{15:"豪华版"},
+    "RTX 3080":{43:"超级疯狗版",21:"疯狗版",19:"至尊版",11:"豪华版"},
+    "RTX 3070":{15:"豪华版"},
+    "RTX 2080":{43:"超级疯狗版",21:"疯狗版",19:"至尊版",11:"豪华版"},
+    "A100":{79:"豪华版"},
+    "RX 580":{15:"至尊版"},
+}
+
 CATEGORY_NAME = "WJNode/Other-node"
 
 class Graphics_Detection_Reference:
@@ -203,14 +215,20 @@ class Graphics_Detection_Reference:
                 total_memory = torch.cuda.get_device_properties(device).total_memory/1024**3 #总显存大小
                 free_memory = torch.cuda.memory_allocated()/1024**3 #当前可用显存
                 compute_capability = torch.cuda.get_device_capability()
-                # 检测是否是4090/4090D魔改版
-                if "RTX 4090" in gpu_name :
-                    if total_memory > 79.0:
-                        add_info("GPU Device", gpu_name+" 至尊魔改版")
-                    if total_memory > 47.0:
-                        add_info("GPU Device", gpu_name+" 魔改版")
-                else:
+
+                # 检测是否是显存改装版
+                is_refit = False
+                for k,v in refit.items():
+                    if not is_refit: break
+                    if k in gpu_name :
+                        for kk,vv in v.items():
+                            if total_memory > kk:
+                                is_refit = True
+                                add_info("GPU Device", gpu_name+" "+vv)
+                                break
+                if not is_refit:
                     add_info("GPU Device", gpu_name)
+
                 # 架构和cuda版本
                 add_info("Architecture", f"Compute {compute_capability[0]}.{compute_capability[1]}")
                 add_info("CUDA Version", torch.version.cuda)

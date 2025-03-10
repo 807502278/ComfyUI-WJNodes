@@ -46,6 +46,37 @@
         "latency": 0.9,
         "mlperf_score": 6.77,
         "aiperf_score": 13.4
+        },
+    "RTX_3090":{
+        "memory": 24,
+        "bandwidth": 935.8,
+        "fp32_tflops": 32,
+        "fp16_tflops": 63,
+        "bf16_tflops": 63,
+        "int8_tops": "",
+        "fp8_tflops": "",
+        "NVFP4": "",
+        "mixed_precision_tflops": 18,
+        "gemm_tflops": 34,
+        "throughput": 4130,
+        "latency": 1.7,
+        "mlperf_score": 20,
+        "aiperf_score": 39
+        },
+    "RTX_3080":{
+        "memory": 10,
+        "bandwidth": 587,
+        "fp32_tflops": 28,
+        "fp16_tflops": 56,
+        "bf16_tflops": 56,
+        "int8_tops": "",
+        "fp8_tflops": "",
+        "NVFP4": "",
+        "mixed_precision_tflops": 15,
+        "gemm_tflops": 35,
+        "throughput": 3442,
+        "latency": 0.8,
+        "mlperf_score": 17,
+        "aiperf_score": 33
         }
-
 }
