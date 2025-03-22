@@ -11,7 +11,7 @@ from ..moduel.image_utils import device_input,device_list
 
 CATEGORY_NAME = "WJNode/Detection"
 
-
+# 模型列表
 Models_Dict = {
     # ResNet系列
     "resnet18": {"file": "resnet18-f37072fd.pth", "type": "resnet"},

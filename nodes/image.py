@@ -480,88 +480,6 @@ class adv_crop:
         return [extend_separate, corp_separate]
 
 
-class Accurate_mask_clipping:
-    DESCRIPTION = """
-    Accurately find mask boundaries and optionally crop to those boundaries.
-    Features:
-    1. Find the bounding box of non-zero areas in masks
-    2. Apply offset to expand/shrink the bounding box
-    3. Optional cropping to the bounding box
-    4. Adjustable threshold for determining foreground pixels
-    
-    精确查找遮罩边界并可选裁剪
-    功能：
-    1. 查找遮罩中非零区域的边界框
-    2. 应用偏移量扩展/缩小边界框
-    3. 可选择是否裁剪到边界框
-    4. 可调整的灰度阈值用于确定前景像素
-    """
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "mask": ("MASK",),
-                "crop": ("BOOLEAN", {"default": False}),
-                "offset": ("INT", {"default": 0, "min": -8192, "max": 8192}),
-                "threshold": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01}),
-            },
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("MASK", "INT", "INT", "INT", "INT")
-    RETURN_NAMES = ("mask", "min_y", "max_y", "min_x", "max_x")
-    FUNCTION = "accurate_mask_clipping"
-
-    def accurate_mask_clipping(self, mask, crop, offset, threshold):
-        """高效查找遮罩边界并可选裁剪"""
-        # 获取非零值的索引
-        if len(mask.shape) == 3:
-            mask_batch = []
-            bbox_data = []
-            
-            for m in mask:
-                # 应用阈值，将低于阈值的像素视为背景
-                thresholded_mask = (m > threshold).float()
-                
-                # 获取非零索引
-                y_indices, x_indices = torch.nonzero(thresholded_mask, as_tuple=True)
-                
-                if len(y_indices) == 0:
-                    # 如果没有前景像素，保持原样
-                    mask_batch.append(m.unsqueeze(0))
-                    bbox_data.append((0, m.shape[0]-1, 0, m.shape[1]-1))
-                    continue
-                    
-                # 计算边界框
-                min_y, max_y = y_indices.min().item(), y_indices.max().item()
-                min_x, max_x = x_indices.min().item(), x_indices.max().item()
-                
-                # 应用偏移
-                min_y = max(min_y - offset, 0)
-                min_x = max(min_x - offset, 0)
-                max_y = min(max_y + offset, m.shape[0]-1)
-                max_x = min(max_x + offset, m.shape[1]-1)
-                
-                bbox_data.append((min_y, max_y, min_x, max_x))
-                
-                # 根据crop参数决定是否裁剪
-                if crop:
-                    cropped = m[min_y:max_y+1, min_x:max_x+1]
-                    mask_batch.append(cropped.unsqueeze(0))
-                else:
-                    mask_batch.append(m.unsqueeze(0))
-            
-            # 计算所有边界框的平均值作为返回值
-            avg_min_y = sum(bbox[0] for bbox in bbox_data) // len(bbox_data)
-            avg_max_y = sum(bbox[1] for bbox in bbox_data) // len(bbox_data)
-            avg_min_x = sum(bbox[2] for bbox in bbox_data) // len(bbox_data)
-            avg_max_x = sum(bbox[3] for bbox in bbox_data) // len(bbox_data)
-            
-            return (torch.cat(mask_batch, dim=0), avg_min_y, avg_max_y, avg_min_x, avg_max_x)
-        else:
-            raise ValueError("输入遮罩维度必须为3 (batch, height, width)")
-
-
 class invert_channel_adv: #
     DESCRIPTION = """
     Functionality:
@@ -1293,7 +1211,7 @@ class any_math_v2(any_math):
                 )
 
 
-class image_ValueMath:
+class image_math_value:
     DESCRIPTION = """
     expression: expression
     clamp: If you want to continue with the next image_math_ralue, 
@@ -1572,14 +1490,13 @@ NODE_CLASS_MAPPINGS = {
 
     #WJNode/ImageEdit
     "adv_crop": adv_crop,
-    "Accurate_mask_clipping": Accurate_mask_clipping,
     "invert_channel_adv": invert_channel_adv,
     # "ToImageListData": to_image_list_data,
     "ListMerger": ListMerger,
     # "ImageChannelBus": image_channel_bus,
     "Bilateral_Filter": Bilateral_Filter,
     "image_math": image_math,
-    "image_ValueMath": image_ValueMath,
+    "image_math_value": image_math_value,
     "any_math": any_math,
     "any_math_v2": any_math_v2,
 

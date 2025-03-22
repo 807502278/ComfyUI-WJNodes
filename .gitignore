@@ -1,4 +1,6 @@
 **/__pycache__
 /.vscode
 /other
+/.gitignore
 !Other\nodes_temp
+/folder_paths.py
