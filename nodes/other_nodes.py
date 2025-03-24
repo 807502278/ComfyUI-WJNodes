@@ -689,43 +689,55 @@ class WAS_Mask_Fill_Region_batch:
 
 class SegmDetectorCombined_batch:
     DESCRIPTION = """
-    Original plugin: impack-pack
+    Original plugin: Impact-Pack
     Original node: SegmDetectorCombined
-    change: batch detection of masks
+    change 1: batch detection of masks
+    Change 2: Supports both modes simultaneously
+    原始插件：Impact-Pack
+    原始节点：SegmDetectorCombined
+    更改1：支持批次
+    更改2：支持两个模式
     """
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-                        "segm_detector": ("SEGM_DETECTOR", ),
-                        "image": ("IMAGE", ),
-                        "threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
-                        "dilation": ("INT", {"default": 0, "min": -512, "max": 512, "step": 1}),
-                      }
+                    "image": ("IMAGE", ),
+                    "threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                    "dilation": ("INT", {"default": 0, "min": -512, "max": 512, "step": 1}),
+                    },
+                "optional": {
+                    "bbox_detector": ("BBOX_DETECTOR", ),
+                    "segm_detector": ("SEGM_DETECTOR", ),
+                    }
                 }
 
     RETURN_TYPES = ("MASK",)
     FUNCTION = "doit"
     CATEGORY = CATEGORY_NAME
 
-    def doit(self, segm_detector, image, threshold, dilation):
+    def doit(self, image, threshold, dilation, segm_detector=None, bbox_detector=None):
+        #图像预处理
         if image.dim() == 3:
             image = image.unsqueeze(0)
         mask = torch.zeros((0,*image.shape[1:-1]), dtype=torch.float, device="cpu")
         mask_0 = torch.zeros((1,*image.shape[1:-1]), dtype=torch.float32, device="cpu")
-        if image.shape[0] != 1:
-            for i in range(image.shape[0]):
-                mask_temp = segm_detector.detect_combined(image[i].unsqueeze(0), threshold, dilation)
-                if mask_temp is None:
-                    mask_temp = mask_0
-                else:
-                    mask_temp = mask_temp.unsqueeze(0)
-                mask = torch.cat((mask, mask_temp), dim=0)
+
+        #检测器类型
+        seg_class = segm_detector
+        if segm_detector is None:
+            seg_class = bbox_detector
         else:
-            mask = segm_detector.detect_combined(image, threshold, dilation)
-            if mask is None:
-                mask = mask_0
+            print("Error: No detector selected, Return empty mask !")
+            return(mask_0.unsqueeze(0),)
+
+        #运行检测
+        for i in range(image.shape[0]):
+            mask_temp = seg_class.detect_combined(image[i].unsqueeze(0), threshold, dilation)
+            if mask_temp is None:
+                mask_temp = mask_0
             else:
-                mask = mask.unsqueeze(0)
+                mask_temp = mask_temp.unsqueeze(0)
+            mask = torch.cat((mask, mask_temp), dim=0)
         return (mask,)
 
 
