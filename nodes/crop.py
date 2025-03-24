@@ -86,14 +86,14 @@ class Accurate_mask_clipping:
 
 class mask_crop_square:
     DESCRIPTION = """
-        说明：
-            功能1：输入图像和遮罩，按遮罩区域的中心裁剪图像和遮罩，输出为方形且固定大小的图像/遮罩/裁剪数据
+        功能1：输入图像和遮罩，按遮罩区域的中心裁剪图像和遮罩，输出为方形且固定大小的图像/遮罩/裁剪数据
             注意1：若图像为多张，遮罩为1张则按这个遮罩裁剪所有图像
             注意2：若图像为1张，遮罩为多张则按这些遮罩裁剪这个图像
             注意3：若图像与遮罩批次均大于1且数量不一样则丢弃多的批次
             注意4：若根据遮罩区域的中心计算的裁剪外框超出图像边界，则补充超出边界的部分为Exceeding指定的颜色(含图像和遮罩)
-
-            功能2：输入裁剪数据，将输入的图像按crop_data数据贴回原图像或图像批次
+        功能2：输入裁剪数据，将输入的图像按crop_data数据贴回原图像或图像批次
+            注意1：输入的任意图像都将拉伸缩放成原裁剪后的大小(无需再重缩放)
+            注意2：当输入crop_data时与其无关的参数都将无效
         输入：
             images：输入图像或图像批次，若masks无输入则使用A通道裁剪
             inversion_mask：是否翻转输入遮罩
@@ -104,12 +104,40 @@ class mask_crop_square:
                 若images输入无A通道则直接输出原图
             crop_data：若此输入为空，则使用裁剪功能(功能1)
                 若此输入不为空，则将images贴回crop_data数据内含的原图上，此时有关于裁剪的参数将无效
-            option：用于输入裁剪设置，目前仅增加防抖设置
+            option：用于输入裁剪设置，可忽略，目前仅增加防抖设置
         输出：
             images：原输入图像或图像批次
             masks：原输入遮罩或遮罩批次
             crop_data：用于贴回原图像或图像批次，(包含图像大小/原图/位置信息)
                 若crop_data输入不为空则直接返回原crop_data输入
+        Function 1:
+            Input images and masks, crop the images and masks based on the center of the mask region, and output square and fixed-sized images/masks/crop data.
+                Note 1: If there are multiple images and only one mask, crop all images using this single mask.
+                Note 2: If there is only one image but multiple masks, crop the image using these multiple masks.
+                Note 3: If both the number of images and masks are greater than 1 but are not equal, discard the excess batches.
+                Note 4: If the cropping box calculated from the center of the mask region exceeds the image boundary, 
+                    fill the exceeded part with the color specified by "Exceeding" (for both image and mask).
+        Function 2:
+            Input crop data, and paste the input images back to the original image or batch of images based on the crop_data.
+                Note 1: Any input image will be stretched and resized to the original cropped size (no need for further rescaling).
+                Note 2: When inputting crop_data, all parameters unrelated to it will be invalid.
+        Inputs:
+            images: Input image or batch of images. If no masks are provided, use the A channel for cropping.
+            inversion_mask: Whether to invert the input mask.
+            mask_threshold: Threshold for cropping the mask, ignoring light-colored mask areas and fragmented regions.
+            size: Specifies the output size (in pixels). If set to 0, use the maximum value of the input mask region.
+            Exceeding: Method for filling pixels that exceed the cropping range.
+            masks: Input masks used to obtain crop data. If no masks are provided, use the A channel of the images. 
+                If the images do not have an A channel, output the original image directly.
+            crop_data: If this input is empty, use the cropping function (Function 1). 
+                If this input is not empty, paste the images back onto the original image contained in the crop_data. 
+                In this case, cropping parameters will be ignored.
+            option: Used for input cropping settings, which can be ignored for now. Currently, only anti-shake settings are added.
+        Outputs:
+            images: The original input image or batch of images.
+            masks: The original input mask or batch of masks.
+            crop_data: Used for pasting back to the original image or batch of images (contains image size/original image/position information). 
+                If crop_data input is not empty, return the original crop_data input directly.
     """
     @classmethod
     def INPUT_TYPES(s):
