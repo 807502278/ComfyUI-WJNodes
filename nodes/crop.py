@@ -4,6 +4,19 @@ import numpy as np
 
 CATEGORY_NAME = "WJNode/mask_crop"
 
+mask_crop_DefaultOption = {
+    "inversion_mask":False,
+    "mask_threshold":0.01,
+    "size_pix":0,
+    "Exceeding":"White",
+    "enable_smooth_crop":False,
+    "multi_frame_smooth":False,
+    "smooth_strength":3,
+    "smooth_threshold":0.5,
+    "enable_blank_fill":False,
+}
+
+
 class Accurate_mask_clipping:
     DESCRIPTION = """
     Accurately find mask boundaries and optionally crop to those boundaries.
@@ -144,10 +157,7 @@ class mask_crop_square:
         return {
             "required": {
                 "images":("IMAGE",),
-                "inversion_mask":("BOOLEAN",{"default":False}),
-                "mask_threshold": ("FLOAT",{"default":0.01,"min":0.0,"max":1.0,"step":0.001}),
-                "size": ("INT",{"default":0,"min":0,"max":8192,"step":1}),
-                "Exceeding": (["White","Black","Gray"],{"default":"White"}),
+                "size": ("FLOAT",{"default":1.0,"min":0.01,"max":300.0,"step":0.01}),
             },
             "optional": {
                 "masks":("MASK",),
@@ -159,12 +169,16 @@ class mask_crop_square:
     RETURN_TYPES = ("IMAGE","MASK","crop_data")
     RETURN_NAMES = ("crop_images","crop_masks","crop_data")
     FUNCTION = "restore_mask"
-    def restore_mask(self, inversion_mask, mask_threshold, size, 
-                    Exceeding="White", images=None, masks=None, crop_data=None, option=None):
+    def restore_mask(self, size, images=None, masks=None, crop_data=None, option=None):
         #初始化设置
+        print(option)
+        print("测试....")
         if option is None:
-            option = (False, 3, 0.5, 50, False)
-        enable_smooth_crop, multi_frame_smooth, smooth_strength, smooth_threshold, enable_blank_fill = option
+            option = list(mask_crop_DefaultOption.values())
+        else:
+            option = list(option.values())
+        print(option)
+        inversion_mask, mask_threshold, size_pix, Exceeding, enable_smooth_crop, multi_frame_smooth, smooth_strength, smooth_threshold, enable_blank_fill = option
 
         # 如果没有提供masks，尝试使用图像的alpha通道
         if masks is None:
@@ -208,8 +222,16 @@ class mask_crop_square:
         cropped_masks = []
         positions = []
         
-        # 确定统一的裁剪大小
-        final_crop_size = size if size > 0 else self._calculate_crop_size(masks, mask_threshold)
+        # 计算基础裁剪大小
+        final_crop_size = self._calculate_crop_size(masks, mask_threshold)
+        
+        # 根据size参数调整裁剪大小
+        if size > 0.0 and size != 1.0:
+            final_crop_size = int(final_crop_size * size)
+            if final_crop_size == 0: final_crop_size = 1
+        
+        # 确保裁剪大小是8的倍数
+        #final_crop_size = ((final_crop_size + 7) // 8) * 8
         
         # 获取所有帧的边界框信息
         bbox_info = self._get_all_bboxes(masks, mask_threshold)
@@ -233,6 +255,24 @@ class mask_crop_square:
             padded_img, padded_mask = self._create_padded_tensors(
                 img, mask, crop_info, final_crop_size, fill_value
             )
+            
+            # 如果指定了size_pix且不为0，则调整大小
+            if size_pix > 0 and size_pix != final_crop_size:
+                # 调整图像大小
+                padded_img = F.interpolate(
+                    padded_img.unsqueeze(0).permute(0, 3, 1, 2),
+                    size=(size_pix, size_pix),
+                    mode='bilinear',
+                    align_corners=False
+                ).permute(0, 2, 3, 1).squeeze(0)
+                
+                # 调整遮罩大小
+                padded_mask = F.interpolate(
+                    padded_mask.unsqueeze(0).unsqueeze(0),
+                    size=(size_pix, size_pix),
+                    mode='bilinear',
+                    align_corners=False
+                ).squeeze(0).squeeze(0)
             
             cropped_images.append(padded_img.unsqueeze(0))
             cropped_masks.append(padded_mask.unsqueeze(0))
@@ -642,32 +682,40 @@ class mask_crop_option_SmoothCrop:
     FUNCTION = "smooth_crop"
     def smooth_crop(self, enable_smooth_crop, multi_frame_smooth, smooth_strength, smooth_threshold, enable_blank_fill, add_option=None):
         if add_option is None:
-            add_option = (False, 3, 0.5, 50, False)
-        else:
-            add_option = (enable_smooth_crop, multi_frame_smooth, smooth_strength, smooth_threshold, enable_blank_fill)
+            add_option = mask_crop_DefaultOption.copy()
+        add_option["enable_smooth_crop"] = enable_smooth_crop
+        add_option["multi_frame_smooth"] = multi_frame_smooth
+        add_option["smooth_strength"] = smooth_strength
+        add_option["smooth_threshold"] = smooth_threshold
+        add_option["enable_blank_fill"] = enable_blank_fill
         return (add_option,)
 
-class mask_crop_option_Basic: #待开发
+class mask_crop_option_Basic: 
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "enable_smooth_crop": ("BOOLEAN", {"default": False}),
-                "multi_frame_smooth": ("INT", {"default": 3, "min": 3, "max": 51, "step": 2}),
-                "smooth_strength": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "smooth_threshold": ("INT", {"default": 50, "min": 0, "max": 1000, "step": 1}),
-                "enable_blank_fill": ("BOOLEAN", {"default": False}),
+                "inversion_mask":("BOOLEAN",{"default":False}),
+                "mask_threshold": ("FLOAT",{"default":0.01,"min":0.0,"max":1.0,"step":0.001}),
+                "size_pix":("INT",{"default":0,"min":0,"max":8192,"step":1}),
+                "Exceeding": (["White","Black","Gray"],{"default":"White"}),
             },
             "optional": {
-                "option":("crop_option",),
+                "add_option":("crop_option",),
             }
         }
     CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("crop_option",)
     RETURN_NAMES = ("crop_option",)
     FUNCTION = "smooth_crop"
-    def smooth_crop(self, enable_smooth_crop, multi_frame_smooth, smooth_strength, smooth_threshold, enable_blank_fill):
-        return ((enable_smooth_crop, multi_frame_smooth, smooth_strength, smooth_threshold, enable_blank_fill),)
+    def smooth_crop(self, inversion_mask, mask_threshold, size_pix, Exceeding, add_option=None):
+        if add_option is None:
+            add_option = mask_crop_DefaultOption.copy()
+        add_option["inversion_mask"] = inversion_mask
+        add_option["mask_threshold"] = mask_threshold
+        add_option["size_pix"] = size_pix
+        add_option["Exceeding"] = Exceeding
+        return (add_option,)
 
 class crop_data_edit:
     DESCRIPTION = """
@@ -748,11 +796,201 @@ class crop_data_edit:
             new_crop_data["edge_blend"] = edge_blend
         
         return (new_crop_data,new_crop_data["images"],new_crop_data["masks"])
-  
+
+class crop_data_CoordinateSmooth:
+    DESCRIPTION = """
+    功能：平滑crop_data中的坐标数据，使裁剪区域的移动更加平滑
+    输入：
+        crop_data：包含裁剪数据的字典
+        frame_range：平滑窗口大小，用于计算相邻帧的范围
+        smooth_strength：平滑强度，控制平滑效果的强度
+        smooth_threshold：坐标变化阈值，只有当坐标变化超过阈值时才进行平滑
+    输出：
+        crop_data：平滑后的裁剪数据
+        images：原始图像
+        masks：原始遮罩
+    
+    Function: Smooth the coordinate data in crop_data to make the movement of the cropping area smoother
+    Input:
+        crop_data: Dictionary containing cropping data
+        frame_range: Smoothing window size, used to calculate the range of adjacent frames
+        smooth_strength: Smoothing strength, controls the intensity of smoothing effect
+        smooth_threshold: Coordinate change threshold, smoothing is only applied when coordinate changes exceed the threshold
+    Output:
+        crop_data: Smoothed cropping data
+        images: Original images
+        masks: Original masks
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "crop_data": ("crop_data",),
+                "frame_range": ("INT", {"default": 3, "min": 3, "max": 49, "step": 2}),
+                "smooth_strength": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "smooth_threshold": ("INT", {"default": 50, "min": 0, "max": 1000, "step": 1}),
+                "enable_blank_fill": ("BOOLEAN", {"default": False}),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("crop_data",)
+    RETURN_NAMES = ("crop_data",)
+    FUNCTION = "edit_crop_data"
+    def edit_crop_data(self, crop_data, frame_range, smooth_strength, smooth_threshold, enable_blank_fill):
+        """平滑crop_data中的坐标数据"""
+        # 创建crop_data的副本
+        new_crop_data = {
+            "images": crop_data["images"],
+            "masks": crop_data["masks"],
+            "positions": crop_data["positions"].copy()
+        }
+        
+        # 获取坐标数据和遮罩数据
+        positions = new_crop_data["positions"]
+        masks = new_crop_data["masks"]
+        batch_size = len(positions)
+        
+        # 如果帧数不足，直接返回
+        if batch_size < frame_range:
+            return (new_crop_data,)
+        
+        # 计算半窗口大小
+        half_window = frame_range // 2
+        
+        # 标记空白帧
+        blank_frames = []
+        for i in range(batch_size):
+            mask = masks[i]
+            if mask.mean().item() < 0.01:  # 使用0.01作为阈值判断是否为空白帧
+                blank_frames.append(i)
+        
+        # 如果启用空白帧填充，先处理空白帧
+        if enable_blank_fill and blank_frames:
+            # 先找到所有非空白帧的坐标
+            valid_positions = []
+            valid_indices = []
+            for i in range(batch_size):
+                if i not in blank_frames:
+                    valid_positions.append(positions[i])
+                    valid_indices.append(i)
+            
+            # 如果没有有效帧，直接返回
+            if not valid_positions:
+                return (new_crop_data,)
+            
+            # 处理每个空白帧
+            for blank_idx in blank_frames:
+                # 找到最近的两个有效帧
+                prev_valid_idx = None
+                next_valid_idx = None
+                
+                # 在有效帧列表中查找
+                for idx in valid_indices:
+                    if idx < blank_idx:
+                        prev_valid_idx = idx
+                    elif idx > blank_idx:
+                        next_valid_idx = idx
+                        break
+                
+                # 根据前后有效帧进行插值
+                if prev_valid_idx is not None and next_valid_idx is not None:
+                    # 使用线性插值
+                    weight = (blank_idx - prev_valid_idx) / (next_valid_idx - prev_valid_idx)
+                    prev_pos = positions[prev_valid_idx]
+                    next_pos = positions[next_valid_idx]
+                    
+                    # 插值计算新位置
+                    new_pos = tuple(int(p1 + (p2 - p1) * weight) for p1, p2 in zip(prev_pos, next_pos))
+                    positions[blank_idx] = new_pos
+                elif prev_valid_idx is not None:
+                    # 只有前面有有效帧，使用前面的位置
+                    positions[blank_idx] = positions[prev_valid_idx]
+                elif next_valid_idx is not None:
+                    # 只有后面有有效帧，使用后面的位置
+                    positions[blank_idx] = positions[next_valid_idx]
+                else:
+                    # 如果没有有效帧，使用第一个有效位置
+                    positions[blank_idx] = valid_positions[0]
+        
+        # 对每一帧进行平滑处理
+        for i in range(batch_size):
+            # 如果是空白帧且未启用填充，跳过平滑处理
+            if not enable_blank_fill and i in blank_frames:
+                continue
+                
+            # 获取当前帧的坐标
+            min_y, min_x, max_y, max_x = positions[i]
+            
+            # 计算当前帧的中心点
+            center_y = (min_y + max_y) // 2
+            center_x = (min_x + max_x) // 2
+            
+            # 计算需要考虑的帧数范围
+            start_idx = max(0, i - half_window)
+            end_idx = min(batch_size - 1, i + half_window)
+            
+            # 收集有效的中心点
+            valid_centers_y = []
+            valid_centers_x = []
+            valid_weights = []
+            
+            # 遍历窗口内的帧
+            for frame_idx in range(start_idx, end_idx + 1):
+                if frame_idx != i:
+                    # 如果是空白帧且未启用填充，跳过
+                    if not enable_blank_fill and frame_idx in blank_frames:
+                        continue
+                        
+                    # 获取相邻帧的坐标
+                    frame_min_y, frame_min_x, frame_max_y, frame_max_x = positions[frame_idx]
+                    frame_center_y = (frame_min_y + frame_max_y) // 2
+                    frame_center_x = (frame_min_x + frame_max_x) // 2
+                    
+                    # 计算与当前帧的距离
+                    frame_diff_y = abs(frame_center_y - center_y)
+                    frame_diff_x = abs(frame_center_x - center_x)
+                    
+                    # 修改：当坐标差异小于阈值时进行平滑处理
+                    if frame_diff_y <= smooth_threshold and frame_diff_x <= smooth_threshold:
+                        # 计算权重（距离当前帧越远，权重越小）
+                        distance = abs(frame_idx - i)
+                        weight = (1 - distance / half_window) * smooth_strength
+                        
+                        valid_centers_y.append(frame_center_y)
+                        valid_centers_x.append(frame_center_x)
+                        valid_weights.append(weight)
+            
+            # 如果有有效的中心点，计算加权平均
+            if valid_centers_y:
+                total_weight = sum(valid_weights) + (1 - smooth_strength)
+                weighted_y = sum(cy * w for cy, w in zip(valid_centers_y, valid_weights))
+                weighted_x = sum(cx * w for cx, w in zip(valid_centers_x, valid_weights))
+                
+                # 将原始中心点也加入计算
+                new_center_y = int((weighted_y + center_y * (1 - smooth_strength)) / total_weight)
+                new_center_x = int((weighted_x + center_x * (1 - smooth_strength)) / total_weight)
+                
+                # 计算新的边界框
+                half_height = (max_y - min_y) // 2
+                half_width = (max_x - min_x) // 2
+                
+                # 更新坐标
+                positions[i] = (
+                    new_center_y - half_height,
+                    new_center_x - half_width,
+                    new_center_y + half_height + ((max_y - min_y) % 2),
+                    new_center_x + half_width + ((max_x - min_x) % 2)
+                )
+
+        new_crop_data["positions"] = positions
+        return (new_crop_data,)
+
+
 NODE_CLASS_MAPPINGS = {
     "Accurate_mask_clipping": Accurate_mask_clipping,
     "mask_crop_square": mask_crop_square,
     "mask_crop_option_SmoothCrop": mask_crop_option_SmoothCrop,
-    #"mask_crop_option_Basic": mask_crop_option_Basic,
-    "crop_data_edit": crop_data_edit
+    "mask_crop_option_Basic": mask_crop_option_Basic,
+    "crop_data_edit": crop_data_edit,
+    "crop_data_CoordinateSmooth": crop_data_CoordinateSmooth
 }
