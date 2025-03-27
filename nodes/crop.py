@@ -171,13 +171,10 @@ class mask_crop_square:
     FUNCTION = "restore_mask"
     def restore_mask(self, size, images=None, masks=None, crop_data=None, option=None):
         #初始化设置
-        print(option)
-        print("测试....")
         if option is None:
             option = list(mask_crop_DefaultOption.values())
         else:
             option = list(option.values())
-        print(option)
         inversion_mask, mask_threshold, size_pix, Exceeding, enable_smooth_crop, multi_frame_smooth, smooth_strength, smooth_threshold, enable_blank_fill = option
 
         # 如果没有提供masks，尝试使用图像的alpha通道
