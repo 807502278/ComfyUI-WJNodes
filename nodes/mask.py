@@ -136,6 +136,7 @@ class mask_line_mapping:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "smooth":("BOOLEAN",{"default":True}),
                 "min_target":("INT",{"default":-1,"min":-1,"max":256,"step":1}),
                 "max_target":("INT",{"default":256,"min":-1,"max":256,"step":1}),
                 "min_result":("INT",{"default":0,"min":0,"max":255,"step":1,"display":"slider"}),
@@ -152,46 +153,59 @@ class mask_line_mapping:
     RETURN_TYPES = ("IMAGE","MASK")
     RETURN_NAMES = ("image","mask")
     FUNCTION = "mask_0_1"
-    def mask_0_1(self, min_target, max_target, min_result, max_result, clamp_min, clamp_max, image = None, mask = None):
-        min_result = min_result/255.0 ; max_result = max_result/255.0
-        clamp_min = clamp_min/255.0 ; clamp_max = clamp_max/255.0
+    def mask_0_1(self, smooth, min_target, max_target, min_result, max_result, clamp_min, clamp_max, image = None, mask = None):
+        if smooth:
+            self.min_result = min_result/255.0
+            self.max_result = max_result/255.0
+            self.clamp_min = clamp_min/255.0
+            self.clamp_max = clamp_max/255.0
+        else:
+            self.min_result = min_result
+            self.max_result = max_result
+            self.clamp_min = clamp_min
+            self.clamp_max = clamp_max
+        self.smooth = smooth
 
         if mask is not None:
             mask = torch.nan_to_num(mask)
             if min_target == -1: 
                 min_target = float(torch.min(mask))
-            else: 
-                min_target = min_target/255.0
             if max_target == 256:
                 max_target = float(torch.max(mask))
-            else: 
-                max_target = max_target/255.0
-            mask = self.data_clamp(mask, min_target, max_target, min_result, max_result, clamp_min, clamp_max)
+            mask = self.data_clamp(mask, min_target, max_target)
         if image is not None:
             image = torch.nan_to_num(image)
             if min_target == -1: 
                 min_target = float(torch.min(image))
-            else: 
-                min_target = min_target/255.0
             if max_target == 256: 
                 max_target = float(torch.max(image))
-            else: 
-                max_target = max_target/255.0
-            image = self.data_clamp(image, min_target, max_target, min_result, max_result, clamp_min, clamp_max)
+            image = self.data_clamp(image, min_target, max_target)
 
         if image is None and mask is not None:
-            image = torch.zeros((*mask.shape,3), dtype=torch.float)
+            image = torch.ones((*mask.shape,3), dtype=torch.float)
         elif image is not None and mask is None:
             mask = torch.zeros(image.shape[:-1], dtype=torch.float)
         elif image is None and mask is None:
             print("Error-mask_line_mapping: At least one mask and image must be inputted")
-
         return (image, mask)
     
-    def data_clamp(self, data, min_target, max_target, min_result, max_result, clamp_min, clamp_max):
+    def data_clamp(self, data, min_target, max_target):
+        if not self.smooth:
+            data = (data*255.0).int()
+            if isinstance(min_target, float):
+                min_target = int(min_target*255.0)
+            if isinstance(max_target, float):
+                max_target = int(max_target*255.0)
+        else:
+            if isinstance(min_target, int):
+                min_target = min_target/255.0
+            if isinstance(max_target, int):
+                max_target = max_target/255.0
         data = (data - min_target) / (max_target - min_target)
-        data = data * (max_result - min_result) + min_result
-        data = torch.clamp(data, clamp_min, clamp_max)
+        data = data * (self.max_result - self.min_result) + self.min_result
+        data = torch.clamp(data, self.clamp_min, self.clamp_max)
+        if not self.smooth:
+            data = data/255.0
         return data
 
 
