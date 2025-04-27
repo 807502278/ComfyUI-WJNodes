@@ -1,4 +1,14 @@
 psutil
+librosa
+opencv-python
+requests
+imageio_ffmpeg
+timm
+omegaconf
+plyfile
+huggingface_hub
+PIL
 #The following may already be present:
 #numpy
 #torch
+#easyocr

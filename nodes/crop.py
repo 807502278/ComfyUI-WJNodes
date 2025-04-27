@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-CATEGORY_NAME = "WJNode/mask_crop"
+CATEGORY_NAME = "WJNode/crop"
 
 mask_crop_DefaultOption = {
     "inversion_mask":False,
@@ -16,7 +16,7 @@ mask_crop_DefaultOption = {
     "enable_blank_fill":False,
 }
 
-
+#masks裁剪和检测边界
 class Accurate_mask_clipping:
     DESCRIPTION = """
     Accurately find mask boundaries and optionally crop to those boundaries.
@@ -97,6 +97,251 @@ class Accurate_mask_clipping:
         else:
             raise ValueError("输入遮罩维度必须为3 (batch, height, width)")
 
+#bboxs裁剪方形
+class crop_by_bboxs:
+    DESCRIPTION = """
+    根据边界框(bboxs)裁剪对应的图像序列
+    功能：
+    1. 计算所有边界框中的最大边长
+    2. 对每个图像按照对应的边界框进行裁剪，裁剪区域为以边界框中心为中心的正方形区域
+    3. 将所有裁剪后的图像统一缩放到相同尺寸
+    
+    参数说明：
+    - padding_value: 填充值，当裁剪区域超出图像边界或无边界框时使用
+    - square_method: True-边界框区域扩充至方形/False-边界框区域拉伸至方形
+    - use_highest_confidence: True-若边界框有多个则使用可信度最高的/False-忽略多边界框的帧
+    - bbox_scale: 边界框缩放倍数，可以放大或缩小边界框区域
+    
+    注意：
+    - bboxs和image序列是一一对应的
+    - 如果某个图像没有检测到边界框，将返回padding_value值的灰度图
+    - 裁剪区域超出图像边界时，将使用padding_value灰度进行填充
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+                    "image": ("IMAGE", ),
+                    "bboxs": ("bboxs", ),
+                    "padding_value": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                    "square_method": ("BOOLEAN", {"default": True}),
+                    "use_highest_confidence": ("BOOLEAN", {"default": True}),
+                    "bbox_scale": ("FLOAT", {"default": 1.00, "min": 0.01, "max": 32.00, "step": 0.01, "label": "边界框缩放倍数"}),
+                    }
+                }
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("cropped_images",)
+    FUNCTION = "doit"
+    CATEGORY = CATEGORY_NAME
+    
+    def doit(self, image, bboxs, padding_value=1.0, square_method=True, use_highest_confidence=True, bbox_scale=1.0):
+        import torch
+        import torch.nn.functional as F
+        
+        # 如果图像是单张，转换为批次格式
+        if image.dim() == 3:
+            image = image.unsqueeze(0)
+            
+        # 确保bboxs和image的批次大小一致
+        batch_size = min(len(bboxs), image.shape[0])
+        
+        # 处理每个图像的边界框
+        processed_bboxes = []
+        for i in range(batch_size):
+            frame_bboxes = bboxs[i]
+            
+            # 如果当前帧没有边界框，添加None表示
+            if not frame_bboxes:
+                processed_bboxes.append(None)
+                continue
+            
+            # 处理多个边界框的情况
+            if len(frame_bboxes) > 1:
+                if use_highest_confidence:
+                    # 选择置信度最高的边界框
+                    highest_conf_bbox = max(frame_bboxes, key=lambda x: x.get('confidence', 0))
+                    processed_bboxes.append(highest_conf_bbox)
+                else:
+                    # 忽略多边界框的帧
+                    processed_bboxes.append(None)
+            else:
+                # 只有一个边界框的情况
+                processed_bboxes.append(frame_bboxes[0])
+        
+        # 计算所有有效边界框中的最大边长
+        max_side_length = 0
+        for bbox_data in processed_bboxes:
+            if bbox_data is None:
+                continue
+                
+            # 获取边界框坐标
+            bbox = bbox_data['bbox']
+            x1, y1, x2, y2 = bbox
+            
+            # 计算边界框中心
+            center_x = (x1 + x2) / 2
+            center_y = (y1 + y2) / 2
+            
+            # 计算边界框大小并应用缩放
+            width = (x2 - x1) * bbox_scale
+            height = (y2 - y1) * bbox_scale
+            
+            if square_method:
+                # 取最大边长
+                max_side = max(width, height)
+            else:
+                # 使用现有边长
+                max_side = max(width, height)  # 即使在非方形模式下也使用最大边长作为统一尺寸
+                
+            max_side_length = max(max_side_length, max_side)
+        
+        # 如果没有有效边界框，使用默认尺寸
+        if max_side_length == 0:
+            max_side_length = 256  # 默认尺寸
+            
+        # 确保尺寸是偶数（避免视频编码问题）
+        max_side_length = int(max_side_length)
+        if max_side_length % 2 != 0:
+            max_side_length += 1
+        
+        # 处理每个图像
+        cropped_images = []
+        
+        for i in range(batch_size):
+            bbox_data = processed_bboxes[i] if i < len(processed_bboxes) else None
+            img = image[i]
+            
+            # 如果没有边界框，创建填充图像
+            if bbox_data is None:
+                # 创建指定大小的灰度图像
+                padded_img = torch.ones((max_side_length, max_side_length, img.shape[2]), device=img.device) * padding_value
+                cropped_images.append(padded_img.unsqueeze(0))
+                continue
+            
+            # 获取边界框坐标
+            bbox = bbox_data['bbox']
+            x1, y1, x2, y2 = bbox
+            
+            # 计算边界框中心
+            center_x = (x1 + x2) / 2
+            center_y = (y1 + y2) / 2
+            
+            # 计算边界框大小并应用缩放
+            width = (x2 - x1) * bbox_scale
+            height = (y2 - y1) * bbox_scale
+            
+            if square_method:
+                # 扩充至方形：选择较大边作为正方形边长
+                half_size = max(width, height) / 2
+                
+                # 计算裁剪区域
+                crop_x1 = int(center_x - half_size)
+                crop_y1 = int(center_y - half_size)
+                crop_x2 = int(center_x + half_size)
+                crop_y2 = int(center_y + half_size)
+            else:
+                # 直接使用边界框，但应用缩放
+                # 计算缩放后的边界框
+                new_width = width
+                new_height = height
+                crop_x1 = int(center_x - new_width / 2)
+                crop_y1 = int(center_y - new_height / 2)
+                crop_x2 = int(center_x + new_width / 2)
+                crop_y2 = int(center_y + new_height / 2)
+            
+            # 确保裁剪范围在图像内，同时计算需要填充的量
+            pad_left = max(0, -crop_x1)
+            pad_right = max(0, crop_x2 - img.shape[1])
+            pad_top = max(0, -crop_y1)
+            pad_bottom = max(0, crop_y2 - img.shape[0])
+            
+            # 调整裁剪范围为图像内的有效区域
+            valid_crop_x1 = max(0, crop_x1)
+            valid_crop_y1 = max(0, crop_y1)
+            valid_crop_x2 = min(img.shape[1], crop_x2)
+            valid_crop_y2 = min(img.shape[0], crop_y2)
+            
+            # 执行裁剪
+            if valid_crop_x1 >= valid_crop_x2 or valid_crop_y1 >= valid_crop_y2:
+                # 如果有效裁剪区域为空，创建全填充图像
+                if square_method:
+                    crop_size = int(half_size * 2)
+                    cropped = torch.ones((crop_size, crop_size, img.shape[2]), device=img.device) * padding_value
+                else:
+                    current_height = crop_y2 - crop_y1
+                    current_width = crop_x2 - crop_x1
+                    cropped = torch.ones((current_height, current_width, img.shape[2]), device=img.device) * padding_value
+            else:
+                # 裁剪有效区域
+                cropped = img[valid_crop_y1:valid_crop_y2, valid_crop_x1:valid_crop_x2]
+                
+                # 如果需要填充，则进行填充
+                if pad_left > 0 or pad_right > 0 or pad_top > 0 or pad_bottom > 0:
+                    # 先创建一个全填充的图像
+                    if square_method:
+                        final_height = crop_y2 - crop_y1
+                        final_width = crop_x2 - crop_x1
+                    else:
+                        final_height = crop_y2 - crop_y1
+                        final_width = crop_x2 - crop_x1
+                    
+                    # 创建全填充图像
+                    padded = torch.ones((final_height, final_width, img.shape[2]), device=img.device) * padding_value
+                    
+                    # 计算有效区域在padded中的位置
+                    dst_y1 = pad_top
+                    dst_y2 = dst_y1 + (valid_crop_y2 - valid_crop_y1)
+                    dst_x1 = pad_left
+                    dst_x2 = dst_x1 + (valid_crop_x2 - valid_crop_x1)
+                    
+                    # 复制有效区域
+                    if dst_y2 > dst_y1 and dst_x2 > dst_x1 and dst_y2 <= final_height and dst_x2 <= final_width:
+                        padded[dst_y1:dst_y2, dst_x1:dst_x2] = cropped
+                    
+                    cropped = padded
+            
+            # 调整为统一尺寸
+            if cropped.shape[0] != max_side_length or cropped.shape[1] != max_side_length:
+                # 调整大小
+                cropped = cropped.permute(2, 0, 1)  # [H,W,C] -> [C,H,W]
+                
+                cropped = F.interpolate(
+                    cropped.unsqueeze(0),
+                    size=(max_side_length, max_side_length),
+                    mode='bilinear',
+                    align_corners=False
+                ).squeeze(0)
+                
+                cropped = cropped.permute(1, 2, 0)  # [C,H,W] -> [H,W,C]
+            
+            cropped_images.append(cropped.unsqueeze(0))
+        
+        # 将所有裁剪后的图像堆叠为批次
+        if cropped_images:
+            # 确保所有张量具有相同的尺寸
+            for i in range(len(cropped_images)):
+                if cropped_images[i].shape[1] != max_side_length or cropped_images[i].shape[2] != max_side_length:
+                    # 再次调整大小以确保一致性
+                    cropped_images[i] = F.interpolate(
+                        cropped_images[i].permute(0, 3, 1, 2),
+                        size=(max_side_length, max_side_length),
+                        mode='bilinear',
+                        align_corners=False
+                    ).permute(0, 2, 3, 1)
+            
+            return (torch.cat(cropped_images, dim=0),)
+        else:
+            # 如果没有处理任何图像，返回一批填充图像
+            empty_batch = torch.ones((batch_size, max_side_length, max_side_length, image.shape[3]), device=image.device) * padding_value
+            return (empty_batch,)
+
+#bboxs裁剪方形带回贴参数和回贴
+class crop_by_bboxs_v2: #待开发
+    ...
+
+
+CATEGORY_NAME = "WJNode/crop/mask_crop"
+
+#masks裁剪方形
 class mask_crop_square:
     DESCRIPTION = """
         功能1：输入图像和遮罩，按遮罩区域的中心裁剪图像和遮罩，输出为方形且固定大小的图像/遮罩/裁剪数据
@@ -166,8 +411,8 @@ class mask_crop_square:
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE","MASK","crop_data")
-    RETURN_NAMES = ("crop_images","crop_masks","crop_data")
+    RETURN_TYPES = ("IMAGE","MASK","crop_data","MASK")
+    RETURN_NAMES = ("crop_images","crop_masks","crop_data","boundary_mask")
     FUNCTION = "restore_mask"
     def restore_mask(self, size, images=None, masks=None, crop_data=None, option=None):
         #初始化设置
@@ -190,9 +435,24 @@ class mask_crop_square:
                     print("Error: No alpha channel found in the input images.")
                     return images, dummy_mask, {"images": images, "masks": dummy_mask, "positions": []}
 
+        # 检查并调整masks的分辨率以匹配images
+        if masks is not None and images is not None:
+            if masks.shape[1] != images.shape[1] or masks.shape[2] != images.shape[2]:
+                print(f"Warning: Mask resolution ({masks.shape[1]}x{masks.shape[2]}) does not match image resolution ({images.shape[1]}x{images.shape[2]}). Resizing mask...")
+                print(f"警告：遮罩分辨率({masks.shape[1]}x{masks.shape[2]})与图像分辨率({images.shape[1]}x{images.shape[2]})不匹配，正在调整遮罩大小...")
+                masks = F.interpolate(
+                    masks.unsqueeze(1),
+                    size=(images.shape[1], images.shape[2]),
+                    mode='bilinear',
+                    align_corners=False
+                ).squeeze(1)
+
         # 如果提供了crop_data，执行回贴功能
         if crop_data is not None:
-            return self._restore_with_crop_data(images, masks, crop_data, mask_threshold)
+            result_images, result_masks, result_crop_data = self._restore_with_crop_data(images, masks, crop_data, mask_threshold)
+            # 创建一个空的边界遮罩（全黑）作为占位符，因为回贴功能不需要边界遮罩
+            dummy_boundary_mask = torch.zeros_like(result_masks)
+            return result_images, result_masks, result_crop_data, dummy_boundary_mask
         
         # 处理填充颜色
         fill_value = 1.0 if Exceeding == "White" else (0.0 if Exceeding == "Black" else 0.5)
@@ -249,7 +509,7 @@ class mask_crop_square:
                 img, mask = self._fill_blank_frame(i, images, masks, bbox_info)
             
             # 创建填充后的图像和遮罩
-            padded_img, padded_mask = self._create_padded_tensors(
+            padded_img, padded_mask, boundary_mask = self._create_padded_tensors(
                 img, mask, crop_info, final_crop_size, fill_value
             )
             
@@ -273,6 +533,10 @@ class mask_crop_square:
             
             cropped_images.append(padded_img.unsqueeze(0))
             cropped_masks.append(padded_mask.unsqueeze(0))
+            # 添加边界遮罩到结果中
+            if 'boundary_masks' not in locals():
+                boundary_masks = []
+            boundary_masks.append(boundary_mask.unsqueeze(0))
             positions.append((
                 crop_info["crop_min_y"],
                 crop_info["crop_min_x"],
@@ -283,6 +547,7 @@ class mask_crop_square:
         # 合并结果
         cropped_images = torch.cat(cropped_images, dim=0)
         cropped_masks = torch.cat(cropped_masks, dim=0)
+        boundary_masks = torch.cat(boundary_masks, dim=0)
         
         # 创建crop_data
         crop_data = {
@@ -291,7 +556,7 @@ class mask_crop_square:
             "positions": positions
         }
         
-        return cropped_images, cropped_masks, crop_data
+        return cropped_images, cropped_masks, crop_data, boundary_masks
 
     def _restore_with_crop_data(self, images, masks, crop_data, mask_threshold):
         """使用crop_data执行回贴功能"""
@@ -601,6 +866,8 @@ class mask_crop_square:
         """创建填充后的张量"""
         padded_img = torch.ones((crop_size, crop_size, img.shape[2]), device=img.device) * fill_value
         padded_mask = torch.zeros((crop_size, crop_size), device=mask.device)
+        # 创建超出边界的遮罩，初始化为全白（表示全部超出边界）
+        boundary_mask = torch.ones((crop_size, crop_size), device=mask.device)
         
         # 计算有效区域
         valid_src_min_y = max(0, crop_info["crop_min_y"])
@@ -620,8 +887,10 @@ class mask_crop_square:
                 img[valid_src_min_y:valid_src_max_y, valid_src_min_x:valid_src_max_x]
             padded_mask[valid_dst_min_y:valid_dst_max_y, valid_dst_min_x:valid_dst_max_x] = \
                 mask[valid_src_min_y:valid_src_max_y, valid_src_min_x:valid_src_max_x]
+            # 将有效区域（未超出边界的部分）在boundary_mask中设为0（黑色）
+            boundary_mask[valid_dst_min_y:valid_dst_max_y, valid_dst_min_x:valid_dst_max_x] = 0.0
         
-        return padded_img, padded_mask
+        return padded_img, padded_mask, boundary_mask
 
     def _paste_single_frame(self, idx, img, mask, pos, result_images, result_masks, mask_threshold, crop_data):
         """粘贴单个帧"""
@@ -985,9 +1254,10 @@ class crop_data_CoordinateSmooth:
 
 NODE_CLASS_MAPPINGS = {
     "Accurate_mask_clipping": Accurate_mask_clipping,
+    "crop_by_bboxs": crop_by_bboxs,
     "mask_crop_square": mask_crop_square,
     "mask_crop_option_SmoothCrop": mask_crop_option_SmoothCrop,
     "mask_crop_option_Basic": mask_crop_option_Basic,
     "crop_data_edit": crop_data_edit,
-    "crop_data_CoordinateSmooth": crop_data_CoordinateSmooth
+    "crop_data_CoordinateSmooth": crop_data_CoordinateSmooth,
 }

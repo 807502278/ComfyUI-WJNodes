@@ -636,7 +636,7 @@ class Determine_Type:
         return (data,is_select_type, data_type)
 
 
-CATEGORY_NAME = "WJNode/Other-plugins"
+CATEGORY_NAME = "WJNode/Other-plugins/WAS"
 
 
 class WAS_Mask_Fill_Region_batch:
@@ -644,6 +644,8 @@ class WAS_Mask_Fill_Region_batch:
     Original plugin: was-node-suite-comfyui
     Original node: WAS_Mask_Fill_Region
     change: batch bug in mask processing
+    原始节点：WAS_Mask_Fill_Region
+    更改：支持批次
     """
     @classmethod
     def INPUT_TYPES(cls):
@@ -685,6 +687,9 @@ class WAS_Mask_Fill_Region_batch:
         filled_mask = binary_fill_holes(binary_mask)
         filled_image = Image.fromarray(filled_mask.astype(np.uint8) * 255, mode="L")
         return ImageOps.invert(filled_image.convert("RGB"))
+
+
+CATEGORY_NAME = "WJNode/Other-plugins/ImpackPack"
 
 
 class SegmDetectorCombined_batch:
@@ -738,6 +743,7 @@ class SegmDetectorCombined_batch:
             else:
                 mask_temp = mask_temp.unsqueeze(0)
             mask = torch.cat((mask, mask_temp), dim=0)
+        mask = mask.squeeze(-1)
         return (mask,)
 
 
@@ -745,6 +751,7 @@ class bbox_restore_mask:
     DESCRIPTION = """
     Original plugin: impack-pack
     crop_region:Restore cropped image (SEG editing)
+    crop_region：恢复裁剪后的图像（SEG编辑）
     """
     @classmethod
     def INPUT_TYPES(s):
@@ -782,12 +789,279 @@ class bbox_restore_mask:
         return (mask,)
 
 
+class run_yolo_bboxs:
+    DESCRIPTION = """
+    使用YOLO模型检测图像序列中的目标，并输出边界框详细信息
+    功能：运行yolo模型输入图像序列输出bboxs支持批量处理图像
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+                    "image": ("IMAGE", ),
+                    "threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                    "bbox_detector": ("BBOX_DETECTOR", ),
+                    "input_size": ("INT", {"default": 1024, "min": 0, "max": 4096, "step": 1}),
+                    }
+                }
+    RETURN_TYPES = ("bboxs",)
+    RETURN_NAMES = ("bboxs",)
+    FUNCTION = "doit"
+    CATEGORY = CATEGORY_NAME
+    def doit(self, image, threshold, bbox_detector, input_size):
+        from .yolo_utils import subcore
+        import torchvision.transforms as transforms
+        if image.dim() == 3: # 图像预处理
+            image = image.unsqueeze(0)
+        all_bboxs = [] # 存储所有图像的边界框结果
+        for i in range(image.shape[0]): # 对每张图像进行处理
+            img = image[i].unsqueeze(0) # 获取单张图像
+            # 计算缩放比例
+            scale_factor = 1.0
+            h, w = img.shape[1], img.shape[2]
+            max_dim = max(h, w)
+            # 如果input_size大于0且原图长边大于max_size，则进行缩放
+            if input_size > 0 and max_dim > input_size:
+                scale_factor = input_size / max_dim
+                new_h, new_w = int(h * scale_factor), int(w * scale_factor)
+                # 确保图像格式正确，先转换为PIL图像再调整大小
+                pil_img = subcore.utils.tensor2pil(img)
+                pil_img_resized = pil_img.resize((new_w, new_h))
+                # 不需要再次转换回tensor，因为inference_bbox函数接受PIL图像
+                img_resized = pil_img_resized
+            else:
+                # 直接转换为PIL图像
+                img_resized = subcore.utils.tensor2pil(img)
+            # 使用缩放后的图像进行检测
+            detected_results = subcore.inference_bbox(bbox_detector.bbox_model, 
+                                                     img_resized, 
+                                                     threshold)
+            image_bboxs = [] # 提取边界框信息
+            if len(detected_results[1]) > 0:  # 如果检测到目标
+                for j in range(len(detected_results[1])):
+                    # 获取边界框坐标并根据缩放比例调整回原始尺寸
+                    bbox = detected_results[1][j].tolist()
+                    if scale_factor != 1.0:
+                        # 将边界框坐标按比例放大回原始尺寸 [y1, x1, y2, x2]
+                        bbox = [int(coord / scale_factor) for coord in bbox]
+                        
+                    bbox_info = { # 创建边界框信息字典
+                        "label": detected_results[0][j],  # 类别标签
+                        "bbox": bbox,  # 边界框坐标 [y1, x1, y2, x2]
+                        "confidence": float(detected_results[3][j])  # 置信度
+                    }
+                    image_bboxs.append(bbox_info)
+            all_bboxs.append(image_bboxs) # 将当前图像的边界框结果添加到总结果中
+        return (all_bboxs,)
+
+
+class run_yolo_bboxs_v2:
+    DESCRIPTION = """
+    使用YOLO模型检测图像序列中的目标，并输出边界框详细信息
+    功能：运行yolo模型输入图像序列输出bboxs支持批量处理图像
+    支持选择设备(CPU/GPU/CPU+GPU)以提高处理效率
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+                    "image": ("IMAGE", ),
+                    "threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                    "bbox_detector": ("BBOX_DETECTOR", ),
+                    "input_size": ("INT", {"default": 1024, "min": 0, "max": 4096, "step": 1}),
+                    "device": (["auto", "cpu", "cuda", "mps"], {"default": "auto"}),
+                    "batch_size": ("INT", {"default": 4, "min": 1, "max": 1024, "step": 1}),
+                    }
+                }
+    RETURN_TYPES = ("bboxs",)
+    RETURN_NAMES = ("bboxs",)
+    FUNCTION = "doit"
+    CATEGORY = CATEGORY_NAME
+    def doit(self, image, threshold, bbox_detector, input_size, device="auto", batch_size=1):
+        from .yolo_utils import subcore
+        import torchvision.transforms as transforms
+        import torch
+        import math
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from contextlib import nullcontext
+        
+        # 添加安全的全局变量到 torch.serialization
+        # 解决 PyTorch 2.6 中 weights_only=True 的兼容性问题
+        try:
+            import torch.serialization
+            # 添加 Sequential 和其他常见模块为安全全局变量
+            torch.serialization.add_safe_globals([
+                torch.nn.modules.container.Sequential,
+                torch.nn.modules.linear.Linear,
+                torch.nn.modules.conv.Conv2d,
+                torch.nn.modules.activation.ReLU,
+                torch.nn.modules.pooling.MaxPool2d,
+                torch.nn.Module
+            ])
+        except (ImportError, AttributeError):
+            # 如果是较早版本的 PyTorch，add_safe_globals 可能不存在
+            pass
+        
+        # 确定使用的设备
+        if device == "auto":
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif hasattr(torch, "mps") and torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
+        
+        print(f"使用设备: {device} 进行YOLO检测")
+        
+        if image.dim() == 3: # 图像预处理
+            image = image.unsqueeze(0)
+        
+        total_images = image.shape[0]
+        all_bboxs = [[] for _ in range(total_images)]  # 预分配结果列表，默认为空列表
+        
+        # 修补 inference_bbox 函数，以正确处理 PyTorch 2.6 的兼容性问题
+        def patched_inference_bbox(model, image, confidence, device=None):
+            # 使用上下文管理器临时修改 torch.load 行为
+            with torch.serialization.safe_globals([
+                torch.nn.modules.container.Sequential,
+                torch.nn.modules.linear.Linear,
+                torch.nn.modules.conv.Conv2d,
+                torch.nn.modules.activation.ReLU,
+                torch.nn.modules.pooling.MaxPool2d,
+                torch.nn.Module
+            ]) if hasattr(torch, 'serialization') and hasattr(torch.serialization, 'safe_globals') else nullcontext():
+                try:
+                    return subcore.inference_bbox(model, image, confidence, device=device)
+                except Exception as e:
+                    print(f"YOLO 检测错误: {str(e)}")
+                    # 返回一个空的检测结果结构
+                    return [], [], [], []
+        
+        # 批处理函数
+        def process_batch(batch_indices):
+            batch_results = []
+            batch_images = []
+            scale_factors = []
+            original_shapes = []
+            
+            # 第一步：预处理所有图像，在循环外进行缩放计算
+            for idx in batch_indices:
+                img = image[idx].unsqueeze(0)  # 获取单张图像
+                h, w = img.shape[1], img.shape[2]
+                original_shapes.append((h, w))
+                max_dim = max(h, w)
+                
+                # 计算缩放比例
+                scale_factor = 1.0
+                if input_size > 0 and max_dim > input_size:
+                    scale_factor = input_size / max_dim
+                
+                scale_factors.append(scale_factor)
+            
+            # 第二步：批量转换为PIL图像并进行缩放
+            for i, idx in enumerate(batch_indices):
+                img = image[idx].unsqueeze(0)
+                scale_factor = scale_factors[i]
+                
+                if scale_factor != 1.0:
+                    h, w = original_shapes[i]
+                    new_h, new_w = int(h * scale_factor), int(w * scale_factor)
+                    # 转换为PIL图像并调整大小
+                    pil_img = subcore.utils.tensor2pil(img)
+                    pil_img_resized = pil_img.resize((new_w, new_h))
+                    batch_images.append(pil_img_resized)
+                else:
+                    # 直接转换为PIL图像
+                    batch_images.append(subcore.utils.tensor2pil(img))
+            
+            # 第三步：对每个图像进行检测
+            for i, idx in enumerate(batch_indices):
+                try:
+                    img_resized = batch_images[i]
+                    scale_factor = scale_factors[i]
+                    
+                    # 使用修补后的函数进行检测
+                    detected_results = patched_inference_bbox(
+                        bbox_detector.bbox_model, 
+                        img_resized, 
+                        threshold,
+                        device=device
+                    )
+                    
+                    image_bboxs = []  # 提取边界框信息
+                    if detected_results and len(detected_results) >= 4 and len(detected_results[1]) > 0:  # 确保检测结果有效
+                        for j in range(len(detected_results[1])):
+                            # 获取边界框坐标并根据缩放比例调整回原始尺寸
+                            bbox = detected_results[1][j].tolist()
+                            if scale_factor != 1.0:
+                                # 将边界框坐标按比例放大回原始尺寸 [y1, x1, y2, x2]
+                                bbox = [int(coord / scale_factor) for coord in bbox]
+                                
+                            bbox_info = {  # 创建边界框信息字典
+                                "label": detected_results[0][j],  # 类别标签
+                                "bbox": bbox,  # 边界框坐标 [y1, x1, y2, x2]
+                                "confidence": float(detected_results[3][j])  # 置信度
+                            }
+                            image_bboxs.append(bbox_info)
+                    
+                    batch_results.append((idx, image_bboxs))
+                except Exception as e:
+                    print(f"处理图像 {idx} 时出错: {str(e)}")
+                    batch_results.append((idx, []))  # 返回空的检测结果
+            
+            return batch_results
+        
+        # 根据批处理大小划分任务
+        if device == "cpu" and batch_size > 1:
+            # 使用多线程处理CPU任务
+            num_workers = min(batch_size, torch.get_num_threads())
+            batches = []
+            for i in range(0, total_images, batch_size):
+                batches.append(list(range(i, min(i + batch_size, total_images))))
+            
+            try:
+                with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                    futures = [executor.submit(process_batch, batch) for batch in batches]
+                    for future in as_completed(futures):
+                        try:
+                            for idx, result in future.result():
+                                all_bboxs[idx] = result
+                        except Exception as e:
+                            print(f"处理批次结果时出错: {str(e)}")
+            except Exception as e:
+                print(f"多线程处理时出错: {str(e)}")
+                # 回退到单线程处理
+                for i in range(total_images):
+                    try:
+                        results = process_batch([i])
+                        if results and len(results) > 0:
+                            _, result = results[0]
+                            all_bboxs[i] = result
+                    except Exception as ex:
+                        print(f"回退处理图像 {i} 时出错: {str(ex)}")
+        else:
+            # GPU模式或单线程CPU模式
+            for i in range(total_images):
+                try:
+                    results = process_batch([i])
+                    if results and len(results) > 0:
+                        _, result = results[0]
+                        all_bboxs[i] = result
+                except Exception as e:
+                    print(f"处理图像 {i} 时出错: {str(e)}")
+        
+        return (all_bboxs,)
+
+
+CATEGORY_NAME = "WJNode/Other-plugins/SAM2"
+
+
 class Sam2AutoSegmentation_data:
     DESCRIPTION = """
     Original plugin: ComfyUI-segment-anything-2 
     Original node: Sam2AutoSegmentation
-    change: data output
+    change: add data output
     purpose: Get coordinates/Get object mask
+    更改：增加数据输出
+    目的：获取坐标/获取对象掩码
     """
     @classmethod
     def INPUT_TYPES(s):
@@ -920,4 +1194,6 @@ NODE_CLASS_MAPPINGS = {
     "SegmDetectorCombined_batch": SegmDetectorCombined_batch,
     "bbox_restore_mask": bbox_restore_mask,
     "Sam2AutoSegmentation_data": Sam2AutoSegmentation_data,
+    "run_yolo_bboxs": run_yolo_bboxs,
+    "run_yolo_bboxs_v2": run_yolo_bboxs_v2,
 }

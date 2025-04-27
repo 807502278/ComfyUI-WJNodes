@@ -17,7 +17,7 @@ class ComfyUI_Path_Out:
     """
     @classmethod
     def INPUT_TYPES(s):
-        return {"required": {}, }
+        return {"required": {"backslash":("BOOLEAN", {"default": True})}, }
     CATEGORY = CATEGORY_NAME
     RETURN_TYPES = ("STRING", "STRING", "STRING",
                     "STRING", "STRING", "STRING", "STRING")
@@ -30,19 +30,28 @@ class ComfyUI_Path_Out:
                     "python_env")
     FUNCTION = "output_path"
 
-    def output_path(self,):
+    def output_path(self,backslash):
         # comfy_path = os.path.dirname(folder_paths.__file__)
         comfy_path = folder_paths.base_path
         cache_path = f"{comfy_path}/.cache"
         custom_node = f"{comfy_path}/custom_nodes"
         python_env = os.getcwd()
-        return (comfy_path,
-                folder_paths.output_directory,
-                folder_paths.input_directory,
-                custom_node,
-                folder_paths.models_dir,
-                cache_path,
-                python_env)
+        if backslash:
+            return (comfy_path.replace("\\", "/")+"/",
+                    folder_paths.output_directory.replace("\\", "/")+"/",
+                    folder_paths.input_directory.replace("\\", "/")+"/",
+                    custom_node.replace("\\", "/")+"/",
+                    folder_paths.models_dir.replace("\\", "/")+"/",
+                    cache_path.replace("\\", "/")+"/",
+                    python_env.replace("\\", "/")+"/")
+        else:
+            return (comfy_path+"/",
+                    folder_paths.output_directory+"/",
+                    folder_paths.input_directory+"/",
+                    custom_node+"/",
+                    folder_paths.models_dir+"/",
+                    cache_path+"/",
+                    python_env+"/")
 
 
 class Str_Append:

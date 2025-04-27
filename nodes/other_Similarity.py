@@ -9,7 +9,7 @@ import folder_paths
 from ..moduel.image_utils import device_input,device_list
 
 
-CATEGORY_NAME = "WJNode/Detection"
+CATEGORY_NAME = "WJNode/Other-plugins/Detection"
 
 # 模型列表
 Models_Dict = {

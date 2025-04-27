@@ -10,7 +10,7 @@ import torch
 from PIL import Image
 
 logger = logging.getLogger("ComfyUI-EasyOCR")
-CATEGORY_NAME = "WJNode/Other-plugins"
+CATEGORY_NAME = "WJNode/Other-plugins/EasyOCR"
 
 lang_list = {
     "English": "en",
