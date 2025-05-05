@@ -55,13 +55,15 @@ class Select_Images_Batch:
                 if masks is None:
                     # 检查图像是否有A通道，默认RGB图像shape为(n,h,w,3)，RGBA为(n,h,w,4)
                     if images.shape[-1] == 4:  # 有A通道，将A通道作为遮罩
-                        alpha_channel = images[..., 3:4]
+                        # 提取Alpha通道并转为正确的遮罩格式(批次,高,宽)
+                        alpha_channel = images[..., 3]
                         select_mask = alpha_channel[torch.tensor(s_i, dtype=torch.int)]
                         exclude_mask = alpha_channel[torch.tensor(e_i, dtype=torch.int)]
                     else:  # 没有A通道，创建纯白遮罩
                         h, w = images.shape[1], images.shape[2]
-                        select_mask = torch.ones((len(s_i), h, w, 1), dtype=torch.float32)
-                        exclude_mask = torch.ones((len(e_i), h, w, 1), dtype=torch.float32)
+                        # 创建正确维度的遮罩(批次,高,宽)
+                        select_mask = torch.ones((len(s_i), h, w), dtype=torch.float32)
+                        exclude_mask = torch.ones((len(e_i), h, w), dtype=torch.float32)
         
         # 处理遮罩批次
         if masks is not None:
@@ -77,9 +79,13 @@ class Select_Images_Batch:
                 
                 # 若只输入遮罩，将遮罩转为图像
                 if images is None:
-                    # 将遮罩转为灰度图像(复制到RGB三个通道)
-                    select_img = torch.cat([select_mask, select_mask, select_mask], dim=-1)
-                    exclude_img = torch.cat([exclude_mask, exclude_mask, exclude_mask], dim=-1)
+                    # 将遮罩转为灰度图像(遮罩维度为(批次,高,宽)，需要转为(批次,高,宽,3))
+                    h, w = masks.shape[1], masks.shape[2]
+                    # 扩展维度后复制到三个通道
+                    select_mask_expanded = select_mask.unsqueeze(-1).expand(-1, -1, -1, 3)
+                    exclude_mask_expanded = exclude_mask.unsqueeze(-1).expand(-1, -1, -1, 3)
+                    select_img = select_mask_expanded
+                    exclude_img = exclude_mask_expanded
 
         return (select_img, exclude_img,
                 select_mask, exclude_mask)
