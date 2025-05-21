@@ -2,8 +2,6 @@ import torch
 import math
 import copy
 
-CATEGORY_NAME = "WJNode/Image_Blend"
-
 # 默认设置
 default_options = {
     # 全局参数
@@ -139,6 +137,9 @@ def update_options(s_add, s_orig = None, key = None, temp_key = None):
         else:
             s_orig[key].update(s_add)
         return (s_orig,)
+
+
+CATEGORY_NAME = "WJNode/Image_Blend"
 
 
 class ImageCompositeMask_Adv:
@@ -1044,535 +1045,6 @@ class ImageCompositeMask_Adv:
         return faded
 
 
-class Composite_Coordinate:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-坐标偏移设置
-        输入1：CompositeOptions 接收其它的CompositeOptions输入
-        参数1：x 整型，surface在back上的像素X方向上位置可为负数
-        参数2：y 整型，surface在back上的像素Y方向上位置可为负数
-        参数3：scale 浮点，图像缩放比例，缩放方式默认采用等比缩放，默认倍数1.0
-              如果连入Composite_AutoScale节点则缩放倍数和其叠加，缩放方式采用Composite_AutoScale的
-        参数4：Center_back 布尔值，是否以back的中心为xy坐标0点,
-        参数5：Center_surface 布尔值，是否以surface_*输入图像的中心计算xy
-        参数6：flip_x 布尔值，是否在X方向镜像
-        参数7：flip_y 布尔值，是否在Y方向镜像
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "x": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1}),
-                "y": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1}),
-                "scale": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 10.0, "step": 0.01}),
-                "Center": ("BOOLEAN", {"default": False}),
-                "flip_x": ("BOOLEAN", {"default": False}),
-                "flip_y": ("BOOLEAN", {"default": False}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, x, y, scale, Center, flip_x, flip_y, Options=None):
-        #收集当前设置
-        set_s = {
-            "x": x,
-            "y": y,
-            "scale": scale,  # 确保scale被正确传递
-            "Center": Center,
-            "flip_x": flip_x,
-            "flip_y": flip_y,
-        }
-        return update_options(set_s, Options)
-
-
-class Composite_Scale:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-缩放surface
-        输入：接收其它的CompositeOptions输入
-        参数1：scale_X 浮点，宽度缩放
-        参数2：scale_Y 浮点，高度缩放
-        参数3：ScaleMethod 列表(下拉列表)，缩放方式
-              DoNot_AutoScale 不应用自动缩放
-              long 等比例将surface的长边缩放到back内，默认值
-              long_fill 等比例将surface的长边缩放到back内并将短边补充到铺满画布
-              short 等比例将surface的短边缩放到back内，此时缩小或移动后会显示多余的部分
-              short_crop 等比例将surface的短边缩放到back内并裁剪掉多余的部分
-              stretch 通过拉伸将surface缩放到与back一样大小
-              average 将surface的长宽平均值缩放到与back长宽平均值一样大小
-        参数4：ConditionalScale 列表(下拉列表)，条件缩放
-              NotUsed 不使用条件缩放，默认值
-              max_if 当surface需要放大时才按设置缩放
-              min_if 当surface需要缩小时才按设置缩放
-              
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "scale_X": ("FLOAT", {"default": 1, "min": 0.01, "max": 2048, "step": 0.001}),
-                "scale_Y": ("FLOAT", {"default": 1, "min": 0.01, "max": 2048, "step": 0.001}),
-                "ScaleMethod": (["DoNot_AutoScale", "long", "long_fill", "short", "short_crop", "stretch", "average"], {"default": "long"}),
-                "ConditionalScale": (["NotUsed", "max_if", "min_if"], {"default": "NotUsed"}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, scale_X, scale_Y, ScaleMethod, ConditionalScale, Options=None):
-        set_s = {
-            "ConditionalScale": ConditionalScale, 
-            "ScaleMethod": ScaleMethod, 
-            "scale_X": scale_X,
-            "scale_Y": scale_Y
-        }
-        return update_options(set_s,Options)
-
-
-class Composite_Basic:
-    DESCRIPTION = """用于创建基础混合选项的节点
-    混合图像-缩放surface
-        输入：接收其它的CompositeOptions输入
-        参数1：blend_mode 列表(下拉列表)，可选与底图的叠加算法
-        参数2：mask_mode 列表(下拉列表)，应用遮罩时的方法
-        参数3：opacity 浮点，透明度，为负数时为反色+透明度
-    """
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "blend_mode": (["normal", "multiply", "screen", "overlay", "darken", "lighten", "color_dodge", "color_burn", "hard_light", "soft_light", "difference", "exclusion"], {"default": "normal"}),
-                "mask_mode": (["normal", "multiply", "screen"], {"default": "normal"}),
-                "opacity": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.001}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, blend_mode, mask_mode, opacity, Options=None):
-        set_s = {
-            "blend_mode": blend_mode, 
-            "mask_mode": mask_mode, 
-            "opacity": opacity,
-        }
-        return update_options(set_s,Options)
-
-
-class Composite_Other:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-其他设置(本节点建议设置影响范围)
-        输入：接收其它的CompositeOptions输入
-        参数1：flip_A 布尔值，是否翻转alpha通道
-        参数2：Ignore_Input 布尔值，是否忽略输入
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "flip_A": ("BOOLEAN", {"default": False}),
-                "Ignore_Input": ("BOOLEAN", {"default": False}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, flip_A, Ignore_Input, Options=None):
-        set_s = {
-            "flip_A": flip_A,
-            "Ignore_Input": Ignore_Input,
-        }
-        return update_options(set_s,Options)
-
-
-class Composite_Global_adv:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-全局设置
-        输入：接收其它的CompositeOptions输入
-        参数1：Switch_image 布尔值，是否交换back和surface图像
-        参数2：Switch_options 布尔值，是否交换back和surface的编辑参数
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "Switch_image": ("BOOLEAN", {"default": False}),
-                "Switch_options": ("BOOLEAN", {"default": False}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, Switch_image, Switch_options, Options=None):
-        set_s = {
-            "Switch_image": Switch_image,
-            "Switch_options": Switch_options,
-        }
-        return update_options(set_s,Options,"Global")
-
-
-class Composite_Canvas_adv:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-画布设置
-        输入：接收其它的CompositeOptions输入
-        参数1：color 字符串，画布颜色（十六进制颜色字符串）
-        参数2：image 图像，当有输入时画布使用的图像而不是纯色
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "color": ("STRING", {"default": "#ffffff"}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-                "image": ("IMAGE",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, color, image=None, Options=None):
-        Solid_Color = True
-        if image is not None: Solid_Color = False
-        set_s = {
-            "Solid_Color": Solid_Color,
-            "image": image,
-            "color": color,
-        }
-        return update_options(set_s,Options,"Canvas")
-
-
-class Composite_Application_pro:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，控制所有设置的应用范围
-    混合图像-应用范围设置
-        输入：接收其它的CompositeOptions输入
-        参数1：apply_back 布尔值，是否将输入设置应用到back
-        参数2：apply_surface 布尔值，是否将输入设置应用到surface
-        参数3：apply_mask 布尔值，是否将输入设置应用到MaskMix
-        参数4：res_back 布尔值，是将back的设置恢复默认
-        参数5：res_surface 布尔值，是否将surface的设置恢复默认
-        参数6：res_mask 布尔值，是否将MaskMix的设置恢复默认
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "res_back": ("BOOLEAN", {"default": False}),
-                "res_surface": ("BOOLEAN", {"default": False}),
-                "res_mask": ("BOOLEAN", {"default": False}),
-                "apply_back": ("BOOLEAN", {"default": False}),
-                "apply_surface": ("BOOLEAN", {"default": True}),
-                "apply_mask": ("BOOLEAN", {"default": True}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, apply_back, apply_surface, apply_mask,
-                    res_back, res_surface, res_mask, Options=None):
-        
-        if Options is None:
-            Options = default_options.copy()
-
-        key = ["back","surface","MaskMix"]
-        value_res = [res_back, res_surface, res_mask]
-        value_apply = [apply_back,apply_surface,apply_mask]
-        for i in range(3):
-            if value_res[i]: 
-                Options[key[i]] = default_options[key[i]]
-            Options[key[i]]["enable"] = value_apply[i]
-
-        return (Options,)
-
-
-class Composite_Merge_pro:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，用于合并多个设置
-    混合图像-设置合并(实验性)，若无输入则输出默认设置
-    注意：非覆盖模式可能会产生错误的设置
-        输入1：Options1 第一个设置输入
-        输入2：Options2 第二个设置输入
-        参数1：merge_mode 列表(下拉列表)，值的合并方式
-              normal 智能叠加模式，根据update_options的叠加规则处理(推荐)
-              override 覆盖模式，当Options2中有非默认值时覆盖Options1后输出
-              add 叠加模式
-              subtract 相减模式
-              multiplication 相乘模式
-              max 取最大值模式，取两个设置中的最大值
-              min 取最小值模式，取两个设置中的最小值
-        参数2：Cannot_merged 列表(下拉列表)，当有无法合并的(下拉列表)用哪个设置
-        参数3：merge_Application 布尔值，是否合并Application
-        参数4：merge_back 布尔值，是否合并back设置
-        参数5：merge_surface 布尔值，是否合并surface设置
-        参数6：merge_MaskMix 布尔值，是否合并MaskMix设置
-        参数7：merge_Canvas 布尔值，是否合并Canvas设置
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "merge_mode": (["normal", "override", "add", "subtract", "multiplication", "division", "max", "min"], {"default": "normal"}),
-                "Cannot_merged":(["default", "Options1", "Options2"], {"default": "Options1"}),
-                "merge_Application": ("BOOLEAN", {"default": True}),
-                "merge_back": ("BOOLEAN", {"default": False}),
-                "merge_surface": ("BOOLEAN", {"default": False}),
-                "merge_MaskMix": ("BOOLEAN", {"default": False}),
-                "merge_Canvas": ("BOOLEAN", {"default": False}),
-            },
-            "optional": {
-                "Options1": ("Composite_Basic",),
-                "Options2": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, merge_mode, Cannot_merged, merge_Application, merge_back, merge_surface, merge_MaskMix, merge_Canvas, Options1=None, Options2=None):
-        # 获取默认设置
-        Options0 = default_options.copy()
-        # 如果输入都为空，返回默认
-        if Options1 is None and Options2 is None:
-            return (Options0,)
-        # 只输入一个，直接返回
-        if Options1 is None:
-            return (Options2 if Options2 is not None else Options0,)
-        if Options2 is None:
-            return (Options1,)
-
-        # 使用深拷贝避免修改原始对象
-        Options1 = copy.deepcopy(Options1)
-        Options2 = copy.deepcopy(Options2)
-        
-        # normal模式 - 使用update_options对相应部分进行智能叠加
-        if merge_mode == "normal":
-            # 创建一个叠加目标的深拷贝
-            result = copy.deepcopy(Options1)
-            
-            # 保存要更新的部分
-            sections_to_update = []
-            if merge_Application: sections_to_update.append("Global")
-            if merge_back: sections_to_update.append("back")
-            if merge_surface: sections_to_update.append("surface")
-            if merge_MaskMix: sections_to_update.append("MaskMix")
-            if merge_Canvas: sections_to_update.append("Canvas")
-            
-            # 对每个要更新的部分进行处理
-            for section in sections_to_update:
-                # 准备待更新的属性字典
-                section_updates = {}
-                # 提取要更新的属性
-                for attr, value in Options2[section].items():
-                    # 只包含非默认值属性，避免覆盖已有设置
-                    if value != Options0[section].get(attr, None):
-                        section_updates[attr] = value
-                
-                # 如果有需要更新的属性
-                if section_updates:
-                    if section == "Global" or section == "Canvas":
-                        # 对全局或画布设置使用update_options更新
-                        result = update_options(section_updates, result, section)[0]
-                    else:
-                        # 对back/surface/MaskMix设置，设置特定部分的key参数
-                        # 首先确保该部分启用
-                        if result[section]["enable"]:
-                            # 创建只更新特定部分的key列表
-                            temp_key = [section]
-                            # 使用update_options函数对特定部分进行智能叠加
-                            result = update_options(section_updates, result, None, temp_key)[0]
-            
-            return (result,)
-        
-        # 合并结果初始化
-        result = Options1.copy()
-        # 分类合并开关
-        merge_keys = [
-            ("Global", merge_Application),
-            ("back", merge_back),
-            ("surface", merge_surface),
-            ("MaskMix", merge_MaskMix),
-            ("Canvas", merge_Canvas),
-        ]
-        for key, do_merge in merge_keys:
-            if not do_merge:
-                continue  # 不合并，保留Options1的原值
-            # 合并该分类下所有子项
-            for sub_key in result[key]:
-                v1 = Options1[key][sub_key]
-                v2 = Options2[key][sub_key]
-                v0 = Options0[key][sub_key]
-                # 合并逻辑
-                if merge_mode == "override":
-                    if v2 != v0:
-                        result[key][sub_key] = v2
-                else:
-                    # 只对数值/布尔类型做运算
-                    if isinstance(v1, (float, int)) and isinstance(v2, (float, int)):
-                        result[key][sub_key] = self.calculation(v1, v2, merge_mode)
-                    elif isinstance(v1, bool) and isinstance(v2, bool):
-                        result[key][sub_key] = bool(self.calculation(v1, v2, merge_mode))
-                    else:
-                        # 其它类型按Cannot_merged策略
-                        if Cannot_merged == "default":
-                            result[key][sub_key] = v0
-                        elif Cannot_merged == "Options1":
-                            result[key][sub_key] = v1
-                        elif Cannot_merged == "Options2":
-                            result[key][sub_key] = v2
-        
-        # 使用深拷贝确保结果是独立的
-        result = copy.deepcopy(result)
-        return (result,)
-    
-    def calculation(self,a, b, mode: str):
-        # 定义一个操作模式到函数的映射
-        operations = {
-            "override": lambda x, y: y,
-            "add": lambda x, y: x + y,
-            "subtract": lambda x, y: x - y,
-            "multiplication": lambda x, y: x * y,
-            "division": lambda x, y: x / y,
-            "max": max,
-            "min": min
-        }
-
-        # 获取对应的函数并执行
-        operation = operations.get(mode)
-        if operation:
-            return operation(a, b)
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
-
-
-class Composite_Mask:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-遮罩设置
-        输入：接收其它的CompositeOptions输入
-        参数1：use_mask 列表(下拉列表)，指定使用哪个遮罩
-              auto 自动检测，默认值
-              none 不使用遮罩
-              mask 使用MaskMix输入
-              surface_alpha 使用surface的A通道
-              back_alpha 使用back的A通道
-        参数2：output_mask 列表(下拉列表)，指定输出哪个遮罩
-              auto 自动检测，默认值
-              none 不输出遮罩
-              white 输出纯白遮罩
-              black 输出纯黑遮罩
-              mask 输出MaskMix
-              surface_alpha 输出surface的A通道
-              back_alpha 输出back的A通道
-              mixed 通过MaskMix混合surface和back的A通道
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "use_mask": (["auto", "none", "mask", "surface_alpha", "back_alpha"], {"default": "auto"}),
-                "output_mask": (["auto", "none", "white", "black", "mask", "surface_alpha", "back_alpha", "mixed"], {"default": "auto"}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, use_mask, output_mask, Options=None):
-        set_s = {
-            "use_mask": use_mask,
-            "output_mask": output_mask,
-        }
-        return update_options(set_s, Options, "MaskMix")
-
-
-class Composite_Batch:
-    DESCRIPTION = """
-    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-批次处理方式设置
-        输入：接收其它的CompositeOptions输入
-        参数1：batch_mode 列表(下拉列表)，批次处理方式
-              auto 自动处理，根据当前批次自动匹配（默认值）
-              flatten 将多批次图像按A通道叠加为单张图像
-              first 使用批次的第一张图像
-              last 使用批次的最后一张图像
-              match_back 匹配到back的数量
-              match_surface 匹配到surface的数量
-              match_mask 匹配到MaskMix的数量
-        参数2：batch_start 整型，指定截取批次的起始索引（包含）
-        参数3：batch_end 整型，指定截取批次的结束索引（不包含，-1表示到结尾）
-        
-        此节点默认对surface和MaskMix生效，可以通过Composite_Application_pro控制对谁生效
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "batch_mode": (["auto", "flatten", "first", "last", "match_back", "match_surface", "match_mask"], {"default": "auto"}),
-                "batch_start": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
-                "batch_end": ("INT", {"default": -1, "min": -1, "max": 10000, "step": 1}),
-            },
-            "optional": {
-                "Options": ("Composite_Basic",),
-            }
-        }
-    RETURN_TYPES = ("Composite_Basic",)
-    FUNCTION = "get_options"
-    CATEGORY = CATEGORY_NAME
-
-    def get_options(self, batch_mode, batch_start, batch_end, Options=None):
-        set_s = {
-            "batch_mode": batch_mode,
-            "batch_start": batch_start,
-            "batch_end": batch_end,
-        }
-        
-        # 默认仅对surface和MaskMix生效，而不是对back生效
-        if Options is None:
-            Options = default_options.copy()
-            
-        # 先更新surface
-        surface_set = update_options(set_s, Options, "surface")
-        
-        # 再更新MaskMix
-        result = update_options(set_s, surface_set[0], "MaskMix")
-        
-        return result
-
-
 class maskCompositeMask_Adv:
     DESCRIPTION = """
     maskCompositeMask_Adv(多通道遮罩混合)
@@ -2183,30 +1655,24 @@ class maskCompositeMask_Adv:
         return faded
 
 
-class Composite_Coordinate:
+
+CATEGORY_NAME = "WJNode/Image_Blend/options_adv"
+
+
+class Composite_Global_adv:
     DESCRIPTION = """
     ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-坐标偏移设置
-        输入1：CompositeOptions 接收其它的CompositeOptions输入
-        参数1：x 整型，surface在back上的像素X方向上位置可为负数
-        参数2：y 整型，surface在back上的像素Y方向上位置可为负数
-        参数3：scale 浮点，图像缩放比例，缩放方式默认采用等比缩放，默认倍数1.0
-              如果连入Composite_AutoScale节点则缩放倍数和其叠加，缩放方式采用Composite_AutoScale的
-        参数4：Center_back 布尔值，是否以back的中心为xy坐标0点,
-        参数5：Center_surface 布尔值，是否以surface_*输入图像的中心计算xy
-        参数6：flip_x 布尔值，是否在X方向镜像
-        参数7：flip_y 布尔值，是否在Y方向镜像
+    混合图像-全局设置
+        输入：接收其它的CompositeOptions输入
+        参数1：Switch_image 布尔值，是否交换back和surface图像
+        参数2：Switch_options 布尔值，是否交换back和surface的编辑参数
     """
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "x": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1}),
-                "y": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1}),
-                "scale": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 10.0, "step": 0.01}),
-                "Center": ("BOOLEAN", {"default": False}),
-                "flip_x": ("BOOLEAN", {"default": False}),
-                "flip_y": ("BOOLEAN", {"default": False}),
+                "Switch_image": ("BOOLEAN", {"default": False}),
+                "Switch_options": ("BOOLEAN", {"default": False}),
             },
             "optional": {
                 "Options": ("Composite_Basic",),
@@ -2216,48 +1682,70 @@ class Composite_Coordinate:
     FUNCTION = "get_options"
     CATEGORY = CATEGORY_NAME
 
-    def get_options(self, x, y, scale, Center, flip_x, flip_y, Options=None):
-        #收集当前设置
+    def get_options(self, Switch_image, Switch_options, Options=None):
         set_s = {
-            "x": x,
-            "y": y,
-            "scale": scale,  # 确保scale被正确传递
-            "Center": Center,
-            "flip_x": flip_x,
-            "flip_y": flip_y,
+            "Switch_image": Switch_image,
+            "Switch_options": Switch_options,
         }
-        return update_options(set_s, Options)
+        return update_options(set_s,Options,"Global")
 
 
-class Composite_Scale:
+class Composite_Canvas_adv:
     DESCRIPTION = """
     ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
-    混合图像-缩放surface
+    混合图像-画布设置
         输入：接收其它的CompositeOptions输入
-        参数1：scale_X 浮点，宽度缩放
-        参数2：scale_Y 浮点，高度缩放
-        参数3：ScaleMethod 列表(下拉列表)，缩放方式
-              DoNot_AutoScale 不应用自动缩放
-              long 等比例将surface的长边缩放到back内，默认值
-              long_fill 等比例将surface的长边缩放到back内并将短边补充到铺满画布
-              short 等比例将surface的短边缩放到back内，此时缩小或移动后会显示多余的部分
-              short_crop 等比例将surface的短边缩放到back内并裁剪掉多余的部分
-              stretch 通过拉伸将surface缩放到与back一样大小
-              average 将surface的长宽平均值缩放到与back长宽平均值一样大小
-        参数4：ConditionalScale 列表(下拉列表)，条件缩放
-              NotUsed 不使用条件缩放，默认值
-              max_if 当surface需要放大时才按设置缩放
-              min_if 当surface需要缩小时才按设置缩放
-              
+        参数1：color 字符串，画布颜色（十六进制颜色字符串）
+        参数2：image 图像，当有输入时画布使用的图像而不是纯色
     """
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "scale_X": ("FLOAT", {"default": 1, "min": 0.01, "max": 2048, "step": 0.001}),
-                "scale_Y": ("FLOAT", {"default": 1, "min": 0.01, "max": 2048, "step": 0.001}),
-                "ScaleMethod": (["DoNot_AutoScale", "long", "long_fill", "short", "short_crop", "stretch", "average"], {"default": "long"}),
-                "ConditionalScale": (["NotUsed", "max_if", "min_if"], {"default": "NotUsed"}),
+                "color": ("STRING", {"default": "#ffffff"}),
+            },
+            "optional": {
+                "Options": ("Composite_Basic",),
+                "image": ("IMAGE",),
+            }
+        }
+    RETURN_TYPES = ("Composite_Basic",)
+    FUNCTION = "get_options"
+    CATEGORY = CATEGORY_NAME
+
+    def get_options(self, color, image=None, Options=None):
+        Solid_Color = True
+        if image is not None: Solid_Color = False
+        set_s = {
+            "Solid_Color": Solid_Color,
+            "image": image,
+            "color": color,
+        }
+        return update_options(set_s,Options,"Canvas")
+
+
+class Composite_Application_pro:
+    DESCRIPTION = """
+    ImageCompositeMask_adv图像混合专用设置，控制所有设置的应用范围
+    混合图像-应用范围设置
+        输入：接收其它的CompositeOptions输入
+        参数1：apply_back 布尔值，是否将输入设置应用到back
+        参数2：apply_surface 布尔值，是否将输入设置应用到surface
+        参数3：apply_mask 布尔值，是否将输入设置应用到MaskMix
+        参数4：res_back 布尔值，是将back的设置恢复默认
+        参数5：res_surface 布尔值，是否将surface的设置恢复默认
+        参数6：res_mask 布尔值，是否将MaskMix的设置恢复默认
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "res_back": ("BOOLEAN", {"default": False}),
+                "res_surface": ("BOOLEAN", {"default": False}),
+                "res_mask": ("BOOLEAN", {"default": False}),
+                "apply_back": ("BOOLEAN", {"default": False}),
+                "apply_surface": ("BOOLEAN", {"default": True}),
+                "apply_mask": ("BOOLEAN", {"default": True}),
             },
             "optional": {
                 "Options": ("Composite_Basic",),
@@ -2267,48 +1755,180 @@ class Composite_Scale:
     FUNCTION = "get_options"
     CATEGORY = CATEGORY_NAME
 
-    def get_options(self, scale_X, scale_Y, ScaleMethod, ConditionalScale, Options=None):
-        set_s = {
-            "ConditionalScale": ConditionalScale, 
-            "ScaleMethod": ScaleMethod, 
-            "scale_X": scale_X,
-            "scale_Y": scale_Y
-        }
-        return update_options(set_s,Options)
+    def get_options(self, apply_back, apply_surface, apply_mask,
+                    res_back, res_surface, res_mask, Options=None):
+        
+        if Options is None:
+            Options = default_options.copy()
+
+        key = ["back","surface","MaskMix"]
+        value_res = [res_back, res_surface, res_mask]
+        value_apply = [apply_back,apply_surface,apply_mask]
+        for i in range(3):
+            if value_res[i]: 
+                Options[key[i]] = default_options[key[i]]
+            Options[key[i]]["enable"] = value_apply[i]
+
+        return (Options,)
 
 
-class Composite_Basic:
-    DESCRIPTION = """用于创建基础混合选项的节点
-    混合图像-缩放surface
-        输入：接收其它的CompositeOptions输入
-        参数1：blend_mode 列表(下拉列表)，可选与底图的叠加算法
-        参数2：mask_mode 列表(下拉列表)，应用遮罩时的方法
-        参数3：opacity 浮点，透明度，为负数时为反色+透明度
+class Composite_Merge_pro:
+    DESCRIPTION = """
+    ImageCompositeMask_adv图像混合专用设置，用于合并多个设置
+    混合图像-设置合并(实验性)，若无输入则输出默认设置
+    注意：非覆盖模式可能会产生错误的设置
+        输入1：Options1 第一个设置输入
+        输入2：Options2 第二个设置输入
+        参数1：merge_mode 列表(下拉列表)，值的合并方式
+              normal 智能叠加模式，根据update_options的叠加规则处理(推荐)
+              override 覆盖模式，当Options2中有非默认值时覆盖Options1后输出
+              add 叠加模式
+              subtract 相减模式
+              multiplication 相乘模式
+              max 取最大值模式，取两个设置中的最大值
+              min 取最小值模式，取两个设置中的最小值
+        参数2：Cannot_merged 列表(下拉列表)，当有无法合并的(下拉列表)用哪个设置
+        参数3：merge_Application 布尔值，是否合并Application
+        参数4：merge_back 布尔值，是否合并back设置
+        参数5：merge_surface 布尔值，是否合并surface设置
+        参数6：merge_MaskMix 布尔值，是否合并MaskMix设置
+        参数7：merge_Canvas 布尔值，是否合并Canvas设置
     """
-
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "blend_mode": (["normal", "multiply", "screen", "overlay", "darken", "lighten", "color_dodge", "color_burn", "hard_light", "soft_light", "difference", "exclusion"], {"default": "normal"}),
-                "mask_mode": (["normal", "multiply", "screen"], {"default": "normal"}),
-                "opacity": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.001}),
+                "merge_mode": (["normal", "override", "add", "subtract", "multiplication", "division", "max", "min"], {"default": "normal"}),
+                "Cannot_merged":(["default", "Options1", "Options2"], {"default": "Options1"}),
+                "merge_Application": ("BOOLEAN", {"default": True}),
+                "merge_back": ("BOOLEAN", {"default": False}),
+                "merge_surface": ("BOOLEAN", {"default": False}),
+                "merge_MaskMix": ("BOOLEAN", {"default": False}),
+                "merge_Canvas": ("BOOLEAN", {"default": False}),
             },
             "optional": {
-                "Options": ("Composite_Basic",),
+                "Options1": ("Composite_Basic",),
+                "Options2": ("Composite_Basic",),
             }
         }
     RETURN_TYPES = ("Composite_Basic",)
     FUNCTION = "get_options"
     CATEGORY = CATEGORY_NAME
 
-    def get_options(self, blend_mode, mask_mode, opacity, Options=None):
-        set_s = {
-            "blend_mode": blend_mode, 
-            "mask_mode": mask_mode, 
-            "opacity": opacity,
+    def get_options(self, merge_mode, Cannot_merged, merge_Application, merge_back, merge_surface, merge_MaskMix, merge_Canvas, Options1=None, Options2=None):
+        # 获取默认设置
+        Options0 = default_options.copy()
+        # 如果输入都为空，返回默认
+        if Options1 is None and Options2 is None:
+            return (Options0,)
+        # 只输入一个，直接返回
+        if Options1 is None:
+            return (Options2 if Options2 is not None else Options0,)
+        if Options2 is None:
+            return (Options1,)
+
+        # 使用深拷贝避免修改原始对象
+        Options1 = copy.deepcopy(Options1)
+        Options2 = copy.deepcopy(Options2)
+        
+        # normal模式 - 使用update_options对相应部分进行智能叠加
+        if merge_mode == "normal":
+            # 创建一个叠加目标的深拷贝
+            result = copy.deepcopy(Options1)
+            
+            # 保存要更新的部分
+            sections_to_update = []
+            if merge_Application: sections_to_update.append("Global")
+            if merge_back: sections_to_update.append("back")
+            if merge_surface: sections_to_update.append("surface")
+            if merge_MaskMix: sections_to_update.append("MaskMix")
+            if merge_Canvas: sections_to_update.append("Canvas")
+            
+            # 对每个要更新的部分进行处理
+            for section in sections_to_update:
+                # 准备待更新的属性字典
+                section_updates = {}
+                # 提取要更新的属性
+                for attr, value in Options2[section].items():
+                    # 只包含非默认值属性，避免覆盖已有设置
+                    if value != Options0[section].get(attr, None):
+                        section_updates[attr] = value
+                
+                # 如果有需要更新的属性
+                if section_updates:
+                    if section == "Global" or section == "Canvas":
+                        # 对全局或画布设置使用update_options更新
+                        result = update_options(section_updates, result, section)[0]
+                    else:
+                        # 对back/surface/MaskMix设置，设置特定部分的key参数
+                        # 首先确保该部分启用
+                        if result[section]["enable"]:
+                            # 创建只更新特定部分的key列表
+                            temp_key = [section]
+                            # 使用update_options函数对特定部分进行智能叠加
+                            result = update_options(section_updates, result, None, temp_key)[0]
+            
+            return (result,)
+        
+        # 合并结果初始化
+        result = Options1.copy()
+        # 分类合并开关
+        merge_keys = [
+            ("Global", merge_Application),
+            ("back", merge_back),
+            ("surface", merge_surface),
+            ("MaskMix", merge_MaskMix),
+            ("Canvas", merge_Canvas),
+        ]
+        for key, do_merge in merge_keys:
+            if not do_merge:
+                continue  # 不合并，保留Options1的原值
+            # 合并该分类下所有子项
+            for sub_key in result[key]:
+                v1 = Options1[key][sub_key]
+                v2 = Options2[key][sub_key]
+                v0 = Options0[key][sub_key]
+                # 合并逻辑
+                if merge_mode == "override":
+                    if v2 != v0:
+                        result[key][sub_key] = v2
+                else:
+                    # 只对数值/布尔类型做运算
+                    if isinstance(v1, (float, int)) and isinstance(v2, (float, int)):
+                        result[key][sub_key] = self.calculation(v1, v2, merge_mode)
+                    elif isinstance(v1, bool) and isinstance(v2, bool):
+                        result[key][sub_key] = bool(self.calculation(v1, v2, merge_mode))
+                    else:
+                        # 其它类型按Cannot_merged策略
+                        if Cannot_merged == "default":
+                            result[key][sub_key] = v0
+                        elif Cannot_merged == "Options1":
+                            result[key][sub_key] = v1
+                        elif Cannot_merged == "Options2":
+                            result[key][sub_key] = v2
+        
+        # 使用深拷贝确保结果是独立的
+        result = copy.deepcopy(result)
+        return (result,)
+    
+    def calculation(self,a, b, mode: str):
+        # 定义一个操作模式到函数的映射
+        operations = {
+            "override": lambda x, y: y,
+            "add": lambda x, y: x + y,
+            "subtract": lambda x, y: x - y,
+            "multiplication": lambda x, y: x * y,
+            "division": lambda x, y: x / y,
+            "max": max,
+            "min": min
         }
-        return update_options(set_s,Options)
+
+        # 获取对应的函数并执行
+        operation = operations.get(mode)
+        if operation:
+            return operation(a, b)
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
 
 
 class Composite_Other:
@@ -2453,6 +2073,235 @@ class Composite_Application_pro:
             Options[key[i]]["enable"] = value_apply[i]
 
         return (Options,)
+
+
+CATEGORY_NAME = "WJNode/Image_Blend/options"
+
+
+class Composite_Mask:
+    DESCRIPTION = """
+    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
+    混合图像-遮罩设置
+        输入：接收其它的CompositeOptions输入
+        参数1：use_mask 列表(下拉列表)，指定使用哪个遮罩
+              auto 自动检测，默认值
+              none 不使用遮罩
+              mask 使用MaskMix输入
+              surface_alpha 使用surface的A通道
+              back_alpha 使用back的A通道
+        参数2：output_mask 列表(下拉列表)，指定输出哪个遮罩
+              auto 自动检测，默认值
+              none 不输出遮罩
+              white 输出纯白遮罩
+              black 输出纯黑遮罩
+              mask 输出MaskMix
+              surface_alpha 输出surface的A通道
+              back_alpha 输出back的A通道
+              mixed 通过MaskMix混合surface和back的A通道
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "use_mask": (["auto", "none", "mask", "surface_alpha", "back_alpha"], {"default": "auto"}),
+                "output_mask": (["auto", "none", "white", "black", "mask", "surface_alpha", "back_alpha", "mixed"], {"default": "auto"}),
+            },
+            "optional": {
+                "Options": ("Composite_Basic",),
+            }
+        }
+    RETURN_TYPES = ("Composite_Basic",)
+    FUNCTION = "get_options"
+    CATEGORY = CATEGORY_NAME
+
+    def get_options(self, use_mask, output_mask, Options=None):
+        set_s = {
+            "use_mask": use_mask,
+            "output_mask": output_mask,
+        }
+        return update_options(set_s, Options, "MaskMix")
+
+
+class Composite_Batch:
+    DESCRIPTION = """
+    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
+    混合图像-批次处理方式设置
+        输入：接收其它的CompositeOptions输入
+        参数1：batch_mode 列表(下拉列表)，批次处理方式
+              auto 自动处理，根据当前批次自动匹配（默认值）
+              flatten 将多批次图像按A通道叠加为单张图像
+              first 使用批次的第一张图像
+              last 使用批次的最后一张图像
+              match_back 匹配到back的数量
+              match_surface 匹配到surface的数量
+              match_mask 匹配到MaskMix的数量
+        参数2：batch_start 整型，指定截取批次的起始索引（包含）
+        参数3：batch_end 整型，指定截取批次的结束索引（不包含，-1表示到结尾）
+        
+        此节点默认对surface和MaskMix生效，可以通过Composite_Application_pro控制对谁生效
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "batch_mode": (["auto", "flatten", "first", "last", "match_back", "match_surface", "match_mask"], {"default": "auto"}),
+                "batch_start": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
+                "batch_end": ("INT", {"default": -1, "min": -1, "max": 10000, "step": 1}),
+            },
+            "optional": {
+                "Options": ("Composite_Basic",),
+            }
+        }
+    RETURN_TYPES = ("Composite_Basic",)
+    FUNCTION = "get_options"
+    CATEGORY = CATEGORY_NAME
+
+    def get_options(self, batch_mode, batch_start, batch_end, Options=None):
+        set_s = {
+            "batch_mode": batch_mode,
+            "batch_start": batch_start,
+            "batch_end": batch_end,
+        }
+        
+        # 默认仅对surface和MaskMix生效，而不是对back生效
+        if Options is None:
+            Options = default_options.copy()
+            
+        # 先更新surface
+        surface_set = update_options(set_s, Options, "surface")
+        
+        # 再更新MaskMix
+        result = update_options(set_s, surface_set[0], "MaskMix")
+        
+        return result
+
+
+class Composite_Coordinate:
+    DESCRIPTION = """
+    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
+    混合图像-坐标偏移设置
+        输入1：CompositeOptions 接收其它的CompositeOptions输入
+        参数1：x 整型，surface在back上的像素X方向上位置可为负数
+        参数2：y 整型，surface在back上的像素Y方向上位置可为负数
+        参数3：scale 浮点，图像缩放比例，缩放方式默认采用等比缩放，默认倍数1.0
+              如果连入Composite_AutoScale节点则缩放倍数和其叠加，缩放方式采用Composite_AutoScale的
+        参数4：Center_back 布尔值，是否以back的中心为xy坐标0点,
+        参数5：Center_surface 布尔值，是否以surface_*输入图像的中心计算xy
+        参数6：flip_x 布尔值，是否在X方向镜像
+        参数7：flip_y 布尔值，是否在Y方向镜像
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "x": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1}),
+                "y": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1}),
+                "scale": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 10.0, "step": 0.01}),
+                "Center": ("BOOLEAN", {"default": False}),
+                "flip_x": ("BOOLEAN", {"default": False}),
+                "flip_y": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {
+                "Options": ("Composite_Basic",),
+            }
+        }
+    RETURN_TYPES = ("Composite_Basic",)
+    FUNCTION = "get_options"
+    CATEGORY = CATEGORY_NAME
+
+    def get_options(self, x, y, scale, Center, flip_x, flip_y, Options=None):
+        #收集当前设置
+        set_s = {
+            "x": x,
+            "y": y,
+            "scale": scale,  # 确保scale被正确传递
+            "Center": Center,
+            "flip_x": flip_x,
+            "flip_y": flip_y,
+        }
+        return update_options(set_s, Options)
+
+
+class Composite_Scale:
+    DESCRIPTION = """
+    ImageCompositeMask_adv图像混合专用设置，注意相同的后续设置会覆盖前面的设置
+    混合图像-缩放surface
+        输入：接收其它的CompositeOptions输入
+        参数1：scale_X 浮点，宽度缩放
+        参数2：scale_Y 浮点，高度缩放
+        参数3：ScaleMethod 列表(下拉列表)，缩放方式
+              DoNot_AutoScale 不应用自动缩放
+              long 等比例将surface的长边缩放到back内，默认值
+              long_fill 等比例将surface的长边缩放到back内并将短边补充到铺满画布
+              short 等比例将surface的短边缩放到back内，此时缩小或移动后会显示多余的部分
+              short_crop 等比例将surface的短边缩放到back内并裁剪掉多余的部分
+              stretch 通过拉伸将surface缩放到与back一样大小
+              average 将surface的长宽平均值缩放到与back长宽平均值一样大小
+        参数4：ConditionalScale 列表(下拉列表)，条件缩放
+              NotUsed 不使用条件缩放，默认值
+              max_if 当surface需要放大时才按设置缩放
+              min_if 当surface需要缩小时才按设置缩放
+              
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "scale_X": ("FLOAT", {"default": 1, "min": 0.01, "max": 2048, "step": 0.001}),
+                "scale_Y": ("FLOAT", {"default": 1, "min": 0.01, "max": 2048, "step": 0.001}),
+                "ScaleMethod": (["DoNot_AutoScale", "long", "long_fill", "short", "short_crop", "stretch", "average"], {"default": "long"}),
+                "ConditionalScale": (["NotUsed", "max_if", "min_if"], {"default": "NotUsed"}),
+            },
+            "optional": {
+                "Options": ("Composite_Basic",),
+            }
+        }
+    RETURN_TYPES = ("Composite_Basic",)
+    FUNCTION = "get_options"
+    CATEGORY = CATEGORY_NAME
+
+    def get_options(self, scale_X, scale_Y, ScaleMethod, ConditionalScale, Options=None):
+        set_s = {
+            "ConditionalScale": ConditionalScale, 
+            "ScaleMethod": ScaleMethod, 
+            "scale_X": scale_X,
+            "scale_Y": scale_Y
+        }
+        return update_options(set_s,Options)
+
+
+class Composite_Basic:
+    DESCRIPTION = """用于创建基础混合选项的节点
+    混合图像-缩放surface
+        输入：接收其它的CompositeOptions输入
+        参数1：blend_mode 列表(下拉列表)，可选与底图的叠加算法
+        参数2：mask_mode 列表(下拉列表)，应用遮罩时的方法
+        参数3：opacity 浮点，透明度，为负数时为反色+透明度
+    """
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "blend_mode": (["normal", "multiply", "screen", "overlay", "darken", "lighten", "color_dodge", "color_burn", "hard_light", "soft_light", "difference", "exclusion"], {"default": "normal"}),
+                "mask_mode": (["normal", "multiply", "screen"], {"default": "normal"}),
+                "opacity": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 1.0, "step": 0.001}),
+            },
+            "optional": {
+                "Options": ("Composite_Basic",),
+            }
+        }
+    RETURN_TYPES = ("Composite_Basic",)
+    FUNCTION = "get_options"
+    CATEGORY = CATEGORY_NAME
+
+    def get_options(self, blend_mode, mask_mode, opacity, Options=None):
+        set_s = {
+            "blend_mode": blend_mode, 
+            "mask_mode": mask_mode, 
+            "opacity": opacity,
+        }
+        return update_options(set_s,Options)
 
 
 class Composite_Mask:
