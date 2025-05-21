@@ -254,9 +254,8 @@ class Save_Image_Out:
         # return { "ui": { "images": results }, "IMAGE":image, "PATH":full_output_folder,}
 
 
-# ------------------image edit nodes------------------
-CATEGORY_NAME = "WJNode/ImageEdit"
 
+CATEGORY_NAME = "WJNode/crop"
 
 class adv_crop:
     DESCRIPTION = """
@@ -478,6 +477,10 @@ class adv_crop:
             else:
                 corp_separate[i] = crop_data[i]
         return [extend_separate, corp_separate]
+
+
+# ------------------image edit nodes------------------
+CATEGORY_NAME = "WJNode/ImageEdit"
 
 
 class invert_channel_adv: #

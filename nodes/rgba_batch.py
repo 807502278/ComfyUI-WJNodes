@@ -224,7 +224,7 @@ class Select_Batch_v2:
         return(t,e_t,e_s)
 
 
-class SelectBatch_paragraph: # ******************开发中
+class SelectBatch_Paragraph: # ******************开发中
     DESCRIPTION = """
     功能：
     返回指定批次段(第一张图像编号为0)
@@ -233,12 +233,12 @@ class SelectBatch_paragraph: # ******************开发中
     Item：起始批次编号(包含此编号的图像)，为负数时从后面计数
     length：选择批次长度，默认从后面计数，为负数时从前面计数
     extend：当选择长度超过第一或最后一张时的填充方式
-    *extend-no_extend：不填充，
-    *extend-start_extend：填充第一张到指定长度
-    *extend-end_extend：填充最后一张到指定长度
-    *extend-loop：循环填充到指定长度
-    *extend-loop_mirror：填充镜像循环填充到指定长度
-    reversal_batch：反转批次
+        *extend-no_extend：不填充，
+        *extend-start_extend：填充第一张到指定长度
+        *extend-end_extend：填充最后一张到指定长度
+        *extend-loop：循环填充到指定长度
+        *extend-loop_mirror：填充镜像循环填充到指定长度
+    reversal_batch：反转批次（填充在反转后生效）
     输入参数：
     select_img/exclude_img：选择的图像批次/排除的图像批次
     select_mask/exclude_mask：选择的遮罩批次/排除的遮罩批次
@@ -262,25 +262,93 @@ class SelectBatch_paragraph: # ******************开发中
     RETURN_NAMES = ("select_img", "exclude_img","select_mask", "exclude_mask")
     FUNCTION = "SelectImages"
 
-    def SelectImages(self, images, mode1_indexes):
-        select_list = np.array(str_edit.tolist_v2(
-            mode1_indexes, to_oneDim=True, to_int=True, positive=True))
-        select_list1 = select_list[(select_list >= 1) & (select_list <= len(images))]-1
-        if len(select_list1) < 1:  # 若输入的编号全部不在范围内则返回原输入
-            print(
-                "Warning:The input value is out of range, return to the original input.")
-            return (images, None)
-        else:
-            exclude_list = np.arange(1, len(images) + 1)-1
-            exclude_list = np.setdiff1d(exclude_list, select_list1)  # 排除的图像
-            if len(select_list1) < len(select_list):  # 若输入的编号超出范围则仅输出符合编号的图像
-                n = abs(len(select_list)-len(select_list1))
-                print(
-                    f"Warning:The maximum value entered is greater than the batch number range, {n} maximum values have been removed.")
-            print(f"Selected the first {select_list1} image")
-            return (images[torch.tensor(select_list1, dtype=torch.float)], 
-                    images[torch.tensor(exclude_list, dtype=torch.float)])
- 
+    def SelectImages(self, Item, length, extend, reversal_batch, images=None, masks=None):
+        select_img, exclude_img = None, None
+        select_mask, exclude_mask = None, None
+
+        # Helper function to calculate indices and handle extend/reversal
+        def process_batch(data, item, length, extend, reversal_batch):
+            if data is None:
+                return None, None
+
+            n = data.shape[0]
+            
+            # Calculate start and end indices (0-based)
+            start = item if item >= 0 else n + item
+            end = start + length
+
+            # Handle negative length
+            if length < 0:
+                start, end = end, start
+
+            # Adjust indices based on extend mode
+            selected_indices = []
+            if extend == "no_extend":
+                # Clamp indices within bounds
+                start = max(0, min(start, n))
+                end = max(0, min(end, n))
+                selected_indices = np.arange(start, end)
+            elif extend == "start_extend":
+                # Extend with the first element
+                if start < 0:
+                    selected_indices.extend([0] * abs(start))
+                    start = 0
+                start = max(0, min(start, n))
+                end = max(0, min(end, n))
+                selected_indices.extend(np.arange(start, end))
+            elif extend == "end_extend":
+                # Extend with the last element
+                start = max(0, min(start, n))
+                if end > n:
+                    selected_indices.extend(np.arange(start, n))
+                    selected_indices.extend([n - 1] * (end - n))
+                else:
+                    selected_indices.extend(np.arange(start, end))
+            elif extend == "loop":
+                # Loop within the batch
+                indices = np.arange(start, end)
+                selected_indices = np.mod(indices, n)
+            elif extend == "loop_mirror":
+                # Loop with mirroring
+                indices = np.arange(start, end)
+                looped_indices = np.mod(indices, 2 * n)
+                selected_indices = np.where(looped_indices < n, looped_indices, 2 * n - 1 - looped_indices)
+
+            selected_indices = np.array(selected_indices).astype(int)
+
+            # Handle reversal
+            if reversal_batch:
+                selected_indices = np.flip(selected_indices)
+
+            # Select data and exclude data
+            if len(selected_indices) == 0:
+                 return None, data
+
+            selected_data = data[torch.tensor(selected_indices, dtype=torch.long)]
+            all_indices = np.arange(n)
+            excluded_indices = np.setdiff1d(all_indices, selected_indices)
+            
+            # Need to handle the case where selected_indices might contain duplicates due to extend modes.
+            # The excluded indices should be from the original batch, not affected by selected_indices duplicates.
+            # Let's reconsider excluded_indices. The excluded images/masks are those *not* in the selected *segment* from the original batch.
+            # The current logic for exclude_list in the original code seems more appropriate for excluding based on the *calculated* range before extension/reversal.
+            # Let's revert to a simpler exclusion logic: exclude everything that is *not* part of the final selected indices, assuming we want to exclude based on the output.
+            # A potentially better way for exclusion might be to exclude indices from the *original* range that were *not* selected.
+            # However, the description implies the excluded batch is simply what's left *after* selecting the segment.
+            # Let's stick to excluding based on the final selected indices for now, handling potential duplicates in selected_indices by making them unique for exclusion calculation.
+            
+            unique_selected_indices_for_exclusion = np.unique(selected_indices)
+            excluded_indices = np.setdiff1d(all_indices, unique_selected_indices_for_exclusion)
+            excluded_data = data[torch.tensor(excluded_indices, dtype=torch.long)] if len(excluded_indices) > 0 else None
+
+            return selected_data, excluded_data
+
+        # Process images and masks independently
+        select_img, exclude_img = process_batch(images, Item, length, extend, reversal_batch)
+        select_mask, exclude_mask = process_batch(masks, Item, length, extend, reversal_batch)
+
+        return (select_img, exclude_img, select_mask, exclude_mask)
+
 
 class Batch_Average: # ******************开发中
     DESCRIPTION = """
@@ -315,7 +383,8 @@ class Batch_Average: # ******************开发中
 
 NODE_CLASS_MAPPINGS = {
     "Select_Images_Batch": Select_Images_Batch,
-    "SelectBatch_paragraph": SelectBatch_paragraph,
+    "Select_Batch_v2": Select_Batch_v2,
+    "SelectBatch_paragraph": SelectBatch_Paragraph,
     "Batch_Average": Batch_Average,
 }
 
