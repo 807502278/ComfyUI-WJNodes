@@ -224,7 +224,7 @@ class Select_Batch_v2:
         return(t,e_t,e_s)
 
 
-class SelectBatch_Paragraph: # ******************开发中
+class SelectBatch_Paragraph:
     DESCRIPTION = """
     功能：
     返回指定批次段(第一张图像编号为0)
@@ -350,22 +350,28 @@ class SelectBatch_Paragraph: # ******************开发中
         return (select_img, exclude_img, select_mask, exclude_mask)
 
 
-class Batch_Average: # ******************开发中
+class Batch_Average:
     DESCRIPTION = """
     功能：
-    将批次平均切割
+    将图像/遮罩批次平均切割
     输入：
-    Item：分段开始序号
-    division：分段数
-    select：选择输出第几段
+    division：分段数，division_batch_n=true视为批次数
+    select：选择输出第几段,
+            如果为负数：-1为最后一段/-2为倒数第2段
+    division_batch_n:是否将分段数视为按指定批次数分割
+    Complete_end：分段方法
+        None:忽略末尾补齐
+        copy:末尾复制补齐
+        mirror:末尾镜像补齐
     """
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "Item": ("INT", {"default": 0,"min":-4096,"max":4096}),
                 "division": ("INT", {"default": 1,"min":1,"max":4096}),
                 "select": ("INT", {"default": 1,"min":-4096,"max":4096}),
+                "division_batch_n": ("BOOLEAN",{"default": False}),
+                "Complete_end": (["None","copy","mirror"],)
             },
             "optional": {
                 "images": ("IMAGE",),
@@ -377,8 +383,98 @@ class Batch_Average: # ******************开发中
     RETURN_NAMES = ("select_img", "exclude_img","select_mask", "exclude_mask")
     FUNCTION = "SelectImages"
 
-    def SelectImages(self, images):
-        ...
+    def SelectImages(self, division, select, division_batch_n, Complete_end, images=None, masks=None):
+        select_img, exclude_img = None, None
+        select_mask, exclude_mask = None, None
+
+        def process_batch(data, division, select, division_batch_n, Complete_end):
+            if data is None:
+                return None, None
+
+            n = data.shape[0] # Total batch size
+
+            if division_batch_n:
+                # division specifies the number of batches in each segment
+                segment_size = division
+                num_segments = (n + segment_size - 1) // segment_size # Ceiling division
+            else:
+                # division specifies the number of segments
+                num_segments = division
+                if num_segments <= 0:
+                    print("Warning: Number of divisions must be positive. Returning original data.")
+                    return data, None
+                segment_size = n // num_segments
+                remainder = n % num_segments
+
+            # Calculate segment boundaries
+            segments = []
+            current_start = 0
+            for i in range(num_segments):
+                if division_batch_n:
+                    segment_end = min(current_start + segment_size, n)
+                    segments.append(np.arange(current_start, segment_end))
+                    current_start = segment_end
+                else:
+                    segment_end = current_start + segment_size + (1 if i < remainder else 0)
+                    segments.append(np.arange(current_start, segment_end))
+                    current_start = segment_end
+
+            # Handle Complete_end for the last segment if not evenly divisible and not division_batch_n
+            if not division_batch_n and remainder > 0 and Complete_end != "None":
+                 last_segment_indices = segments[-1]
+                 if len(last_segment_indices) < segment_size + (1 if num_segments -1 < remainder else 0) :
+                    # The last segment is shorter than others
+                    missing_count = (segment_size + (1 if num_segments -1 < remainder else 0)) - len(last_segment_indices)
+                    if Complete_end == "copy":
+                        # Copy the last element
+                        segments[-1] = np.concatenate((last_segment_indices, np.full(missing_count, last_segment_indices[-1])))
+                    elif Complete_end == "mirror":
+                        # Mirror from the end of the segment (excluding the last element)
+                        # Need to be careful with mirroring small segments
+                        mirror_source = last_segment_indices[:-1]
+                        if len(mirror_source) > 0:
+                             mirrored_part = np.tile(np.flip(mirror_source), missing_count // len(mirror_source) + 1)[:missing_count]
+                             segments[-1] = np.concatenate((last_segment_indices, mirrored_part))
+                        else:
+                            # If the segment has only one element, copy it
+                             segments[-1] = np.concatenate((last_segment_indices, np.full(missing_count, last_segment_indices[-1])))
+
+
+            # Select the desired segment
+            if select == 0 or abs(select) > len(segments):
+                 print(f"Warning: Invalid segment index {select}. Returning original data.")
+                 return data, None
+
+            # Adjust select for 0-based indexing and negative indices
+            selected_index = select - 1 if select > 0 else len(segments) + select
+            selected_segment_indices = segments[selected_index]
+
+            # Select data
+            selected_data = data[torch.tensor(selected_segment_indices, dtype=torch.long)] if len(selected_segment_indices) > 0 else None
+
+            # Calculate excluded data
+            all_indices = np.arange(n)
+            # Combine all other segment indices for exclusion
+            excluded_segment_indices = np.concatenate([segments[i] for i in range(len(segments)) if i != selected_index])
+            # Get unique indices and then find the difference from all indices
+            unique_excluded_indices = np.unique(excluded_segment_indices)
+            excluded_indices = np.setdiff1d(all_indices, unique_excluded_indices)
+            
+            # Need to refine excluded_indices calculation. Excluded should be everything NOT in the *selected* segment, from the *original* batch.
+            # The previous approach of concatenating other segments might include duplicates or be incorrect if segments overlap due to extensions (though not the case here).
+            # A simpler way is to get all indices *not* in the selected_segment_indices.
+            
+            all_indices = np.arange(n) # Original indices
+            excluded_indices_from_all = np.setdiff1d(all_indices, selected_segment_indices)
+            excluded_data = data[torch.tensor(excluded_indices_from_all, dtype=torch.long)] if len(excluded_indices_from_all) > 0 else None
+
+            return selected_data, excluded_data
+
+        # Process images and masks independently
+        select_img, exclude_img = process_batch(images, division, select, division_batch_n, Complete_end)
+        select_mask, exclude_mask = process_batch(masks, division, select, division_batch_n, Complete_end)
+
+        return (select_img, exclude_img, select_mask, exclude_mask)
 
 
 NODE_CLASS_MAPPINGS = {
@@ -387,4 +483,3 @@ NODE_CLASS_MAPPINGS = {
     "SelectBatch_paragraph": SelectBatch_Paragraph,
     "Batch_Average": Batch_Average,
 }
-
