@@ -17,6 +17,7 @@ from ..moduel.image_utils import device_list, device_default, clean_data
 from ..moduel.custom_class import any
 from ..moduel.str_edit import is_safe_eval
 
+
 # ------------------image load/save nodes--------------------
 CATEGORY_NAME = "WJNode/Image"
 
@@ -63,18 +64,28 @@ class Load_Image_From_Path:
 class Load_Image_Adv:
     DESCRIPTION = """
         A load - image node with image - path output and flipped mask.
+        Support jpg, png, jpeg, webp, tiff, bmp, gif, ico, svg format
+        Can obtain images inside subfolders and individual images within the input directory.
+
         带图片路径输出和翻转遮罩的加载图片节点
+        默认扫描 jpg,png,jpeg,webp,tiff,bmp,gif,ico,svg 格式
+        可获取input内子文件夹内的图像和单个图像
+        
     """
+    def __init__(self):
+        self.input_dir = folder_paths.get_input_directory()
+        self.files = []
+        self.allowed_extensions = ['.jpg', '.png', '.jpeg', '.webp', '.tiff', '.bmp', '.gif', '.ico', '.svg']
 
     @classmethod
-    def INPUT_TYPES(s):
-        input_dir = folder_paths.get_input_directory()
-        files = [f for f in os.listdir(input_dir) if os.path.isfile(
-            os.path.join(input_dir, f))]
+    def INPUT_TYPES(cls):
+        instance = cls()
+        instance.traverse_directory(instance.input_dir)
         return {
             "required": {
-                "image": (sorted(files), {"image_upload": True}),
-                "invert": ("BOOLEAN", {"default": False})
+                "image": (sorted(instance.files), 
+                          {"image_upload": True}),
+                "invert_mask": ("BOOLEAN", {"default": False})
             },
         }
 
@@ -83,7 +94,7 @@ class Load_Image_Adv:
     RETURN_NAMES = ("image", "mask", "path")
     FUNCTION = "load_image"
 
-    def load_image(self, image, invert):
+    def load_image(self, image, invert_mask):
         """
         def to_tensor(image_path):
             from PIL import Image
@@ -123,8 +134,13 @@ class Load_Image_Adv:
                 mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
                 mask = 1. - torch.from_numpy(mask)
             else:
+                try:
+                    w = image.size[0]
+                    h = image.size[1]
+                except:
+                    w = 64; h = 64
                 mask = torch.zeros(
-                    (64, 64), dtype=torch.float32, device=device_default)
+                    (h, w), dtype=torch.float32, device=device_default)
             output_images.append(image)
             output_masks.append(mask.unsqueeze(0))
 
@@ -135,11 +151,21 @@ class Load_Image_Adv:
             output_image = output_images[0]
             output_mask = output_masks[0]
 
-        if invert:
+        if invert_mask:
             output_mask = 1.0 - output_mask
 
         return (output_image, output_mask, image_path)
 
+    def traverse_directory(self, directory):
+        for f in os.listdir(directory):
+            full_path = os.path.join(directory, f)
+            if os.path.isdir(full_path):
+                self.traverse_directory(full_path)  # 递归遍历子文件夹
+            elif os.path.isfile(full_path):
+                ext = os.path.splitext(f)[-1].lower()
+                if ext in [e.lower() for e in self.allowed_extensions]:
+                    relative_path = os.path.relpath(full_path, self.input_dir)
+                    self.files.append(relative_path)
 
 class Save_Image_To_Path:
     """

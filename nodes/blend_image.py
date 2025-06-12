@@ -1655,7 +1655,6 @@ class maskCompositeMask_Adv:
         return faded
 
 
-
 CATEGORY_NAME = "WJNode/Image_Blend/options_adv"
 
 
