@@ -7,7 +7,7 @@ timm
 omegaconf
 plyfile
 huggingface_hub
-PIL
+pillow
 #The following may already be present:
 #numpy
 #torch
