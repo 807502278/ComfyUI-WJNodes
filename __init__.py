@@ -41,5 +41,15 @@ def loadCustomNodes(pyPath):# 加载自定义节点和API文件
 
 loadCustomNodes(pyPath)
 
+__version__ = "1.1.0"
+try:
+    import toml
+    with open('pyproject.toml', 'r', encoding='utf-8') as f:
+        toml_data = toml.load(f)
+    __version__ = toml_data['project']['version']
+except:
+    pass
+
+
 # 定义__all__变量，列出模块中可供外部访问的变量或函数
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']

@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-wjnodes"
-description = "Ready to use upon download. No need to install dependencies for the time being.\nIf there are new functions or suggestions, please provide feedback.\nAttention! The delfile node is not recommended for use on servers. I am not responsible for any losses incurred."
-version = "1.0.0"
+description = "These are some nodes that I often use,If there are new functions or suggestions, please provide feedback."
+version = "1.1.0"
 license = {file = "LICENSE"}
 dependencies = ["#The following may already be present:", "#numpy", "#torch"]
 
@@ -10,6 +10,6 @@ Repository = "https://github.com/807502278/ComfyUI-WJNodes"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "807502278"
 DisplayName = "ComfyUI-WJNodes"
 Icon = ""
