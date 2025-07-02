@@ -19,8 +19,7 @@ from ..moduel.str_edit import is_safe_eval
 
 
 # ------------------image load/save nodes--------------------
-CATEGORY_NAME = "WJNode/Image"
-
+CATEGORY_NAME = "WJNode/ImageFile"
 
 class Load_Image_From_Path:
     """
@@ -59,7 +58,6 @@ class Load_Image_From_Path:
             mask = torch.zeros((64, 64), dtype=torch.float32,
                                device=device_default)
         return (image, mask)
-
 
 class Load_Image_Adv:
     DESCRIPTION = """
@@ -230,7 +228,6 @@ class Save_Image_To_Path:
             counter += 1
         return (images, file_path1)
 
-
 class Save_Image_Out:
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
@@ -279,9 +276,8 @@ class Save_Image_Out:
         return (images, file,)
         # return { "ui": { "images": results }, "IMAGE":image, "PATH":full_output_folder,}
 
-
-
-CATEGORY_NAME = "WJNode/crop"
+# ------------------image crop nodes------------------
+CATEGORY_NAME = "WJNode/ImageCrop"
 
 class adv_crop:
     DESCRIPTION = """
@@ -504,10 +500,8 @@ class adv_crop:
                 corp_separate[i] = crop_data[i]
         return [extend_separate, corp_separate]
 
-
 # ------------------image edit nodes------------------
 CATEGORY_NAME = "WJNode/ImageEdit"
-
 
 class invert_channel_adv: #
     DESCRIPTION = """
@@ -731,7 +725,6 @@ class invert_channel_adv: #
             image = image.to(device_image)
         return [image, device_image]
 
-
 class ListMerger:
     def __init__(self):
         self.list1_buffer = []
@@ -769,7 +762,6 @@ class ListMerger:
         else:
             # 不是最后一个元素时，返回None或空列表
             return ([],)
-
 
 class Bilateral_Filter:
     DESCRIPTION = """
@@ -850,7 +842,6 @@ class Bilateral_Filter:
         image_A = cv2.Bilateral_Filter(image_A, diameter, sigma_color, sigma_space)
         image = torch.cat((torch.tensor(image),torch.tensor(image_A).unsqueeze(-1)),dim=-1).float()/255
         return image
-
 
 class image_math:
     DESCRIPTION = """
@@ -1013,6 +1004,413 @@ class image_math:
             print("Warning-mask_math: The two masks have different shapes")
             return mask1
 
+class image_math_value:
+    DESCRIPTION = """
+    expression: expression
+    clamp: If you want to continue with the next image_math_ralue, 
+            it is recommended not to open it
+    Explanation: The A channel of the image will be automatically removed, 
+            and the shape will be the data shape
+    Note: This node has been deprecated, please use image_math-value-v1
+
+    expression:表达式
+    clamp:如果要继续进行下一次image_math_value建议不打开
+    说明：会自动去掉image的A通道，shape为数据形状
+    注意：此节点已被弃用，请使用image_math_value_v1
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "expression":("STRING",{"default":"a+b","multiline": True}),
+                "clamp":("BOOLEAN",{"default":True}),
+            },
+            "optional": {
+                "a":("IMAGE",),
+                "b":("IMAGE",),
+                "c":("MASK",),
+                "d":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","MASK","LIST")
+    RETURN_NAMES = ("image","mask","shape")
+    FUNCTION = "image_math"
+    def image_math(self,expression,clamp,
+                   a=None, b=None, c=None, d=None):
+        image = None
+        mask = None
+        s = 0
+
+        # 获取所有输入的尺寸并计算目标尺寸
+        shapes = []
+        inputs = {'a': a, 'b': b, 'c': c, 'd': d}
+        for v in inputs.values():
+            if v is not None:
+                shapes.append(v.shape[1:3])  # 只取高度和宽度
+        
+        if shapes:
+            target_height = min(s[0] for s in shapes)
+            target_width = min(s[1] for s in shapes)
+
+            # 处理每个输入
+            for k, v in inputs.items():
+                if v is not None:
+                    # 去掉A通道
+                    if k in ['a', 'b'] and v.shape[-1] == 4:
+                        v = v[..., 0:-1]
+                    
+                    # 调整尺寸
+                    if v.shape[1] != target_height or v.shape[2] != target_width:
+                        v = self._resize_tensor(v, target_height, target_width)
+                    
+                    # 遮罩转3通道
+                    if k in ['c', 'd']:
+                        v = v.unsqueeze(-1).expand(-1, -1, -1, 3)
+                    
+                    inputs[k] = v
+
+        # 更新局部变量
+        a, b, c, d = inputs['a'], inputs['b'], inputs['c'], inputs['d']
+
+        try:
+            local_vars = locals().copy()
+            exec(f"image = {expression}", {}, local_vars)
+            image = local_vars.get("image")
+        except:
+            print("Warning: Invalid expression !, will output null value.")
+
+        if image is not None:
+            if clamp:
+                image = torch.clamp(image, 0.0, 1.0)
+            s = list(image.shape)
+            mask = torch.mean(image, dim=3, keepdim=False)
+        return (image,mask,s)
+
+    def _resize_tensor(self, tensor, target_height, target_width):
+        """调整张量尺寸"""
+        if tensor.dim() == 3:  # 处理mask
+            tensor = tensor.unsqueeze(-1)
+            tensor = F.interpolate(
+                tensor.permute(0, 3, 1, 2),
+                size=(target_height, target_width),
+                mode='bilinear',
+                align_corners=False
+            ).permute(0, 2, 3, 1).squeeze(-1)
+        else:  # 处理image
+            tensor = F.interpolate(
+                tensor.permute(0, 3, 1, 2),
+                size=(target_height, target_width),
+                mode='bilinear',
+                align_corners=False
+            ).permute(0, 2, 3, 1)
+        return tensor
+
+class Robust_Imager_Merge:
+    """具有一定鲁棒性的图像和遮罩拼接节点"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "merge_direction": (["right", "left", "up", "down"], {"default": "right"}),
+                "auto_scale": ("BOOLEAN", {"default": True}),
+                "output_mode": (["merge", "input1", "input2"], {"default": "merge"}),
+            },
+            "optional": {
+                "image1": ("IMAGE",),
+                "image2": ("IMAGE",),
+                "mask1": ("MASK",),
+                "mask2": ("MASK",),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_NAMES = ("image", "mask")
+    FUNCTION = "merge_images"
+    CATEGORY = CATEGORY_NAME
+
+    def merge_images(self, merge_direction, auto_scale, output_mode,
+                    image1=None, image2=None, mask1=None, mask2=None):
+        """拼接图像和遮罩"""
+
+        # 检查输入
+        inputs = [image1, image2, mask1, mask2]
+        input_count = sum(1 for x in inputs if x is not None)
+
+        if input_count == 0:
+            raise ValueError("至少需要一个输入（image或mask）")
+
+        # 处理output_mode为input1或input2的情况
+        if output_mode == "input1":
+            if image1 is not None:
+                image_out = image1
+                mask_out = self._create_white_mask_like_image(image1)
+            elif mask1 is not None:
+                image_out = self._mask_to_image(mask1)
+                mask_out = mask1
+            else:
+                raise ValueError("output_mode为input1时，必须有image1或mask1输入")
+            return (image_out, mask_out)
+
+        elif output_mode == "input2":
+            if image2 is not None:
+                image_out = image2
+                mask_out = self._create_white_mask_like_image(image2)
+            elif mask2 is not None:
+                image_out = self._mask_to_image(mask2)
+                mask_out = mask2
+            else:
+                raise ValueError("output_mode为input2时，必须有image2或mask2输入")
+            return (image_out, mask_out)
+
+        # merge模式的处理逻辑
+        return self._process_merge_mode(merge_direction, auto_scale,
+                                      image1, image2, mask1, mask2)
+
+    def _process_merge_mode(self, merge_direction, auto_scale,
+                           image1, image2, mask1, mask2):
+        """处理merge模式的逻辑"""
+
+        # 统计输入类型
+        has_image1 = image1 is not None
+        has_image2 = image2 is not None
+        has_mask1 = mask1 is not None
+        has_mask2 = mask2 is not None
+
+        image_count = sum([has_image1, has_image2])
+        mask_count = sum([has_mask1, has_mask2])
+
+        # 单独输入逻辑
+        if image_count == 1 and mask_count == 0:
+            # 只有一个image输入
+            img = image1 if has_image1 else image2
+            return (img, self._create_white_mask_like_image(img))
+
+        elif image_count == 0 and mask_count == 1:
+            # 只有一个mask输入
+            mask = mask1 if has_mask1 else mask2
+            return (self._mask_to_image(mask), mask)
+
+        # 混合输入逻辑
+        elif image_count == 1 and mask_count == 1:
+            # 一个image和一个mask
+            img = image1 if has_image1 else image2
+            mask = mask1 if has_mask1 else mask2
+
+            # 将mask转为黑白图像与image拼接
+            mask_as_image = self._mask_to_image(mask)
+            merged_image = self._merge_tensors(img, mask_as_image, merge_direction, auto_scale)
+
+            # 将image转为mask与原mask拼接
+            image_as_mask = self._image_to_mask(img)
+            merged_mask = self._merge_tensors(image_as_mask, mask, merge_direction, auto_scale)
+
+            return (merged_image, merged_mask)
+
+        elif image_count == 2 and mask_count == 0:
+            # 两个image
+            merged_image = self._merge_tensors(image1, image2, merge_direction, auto_scale)
+
+            # 检查Alpha通道逻辑
+            has_alpha1 = image1.shape[-1] == 4
+            has_alpha2 = image2.shape[-1] == 4
+
+            if has_alpha1 and has_alpha2:
+                # 都有Alpha通道，mask输出为拼接后的Alpha通道
+                alpha1 = image1[..., 3:4]  # 保持维度
+                alpha2 = image2[..., 3:4]
+                merged_alpha = self._merge_tensors(alpha1, alpha2, merge_direction, auto_scale)
+                merged_mask = merged_alpha.squeeze(-1)  # 移除最后一个维度变成mask格式
+            else:
+                # 没有Alpha通道或只有一个有，输出白色mask
+                merged_mask = self._create_white_mask_like_image(merged_image)
+
+            return (merged_image, merged_mask)
+
+        elif image_count == 0 and mask_count == 2:
+            # 两个mask
+            merged_mask = self._merge_tensors(mask1, mask2, merge_direction, auto_scale)
+            merged_image = self._mask_to_image(merged_mask)
+            return (merged_image, merged_mask)
+
+        elif image_count == 2 and mask_count == 1:
+            # 两个image和一个mask
+            merged_image = self._merge_tensors(image1, image2, merge_direction, auto_scale)
+            mask = mask1 if has_mask1 else mask2
+            return (merged_image, mask)
+
+        elif image_count == 1 and mask_count == 2:
+            # 一个image和两个mask
+            img = image1 if has_image1 else image2
+            merged_mask = self._merge_tensors(mask1, mask2, merge_direction, auto_scale)
+            return (img, merged_mask)
+
+        elif image_count == 2 and mask_count == 2:
+            # 全部输入
+            merged_image = self._merge_tensors(image1, image2, merge_direction, auto_scale)
+            merged_mask = self._merge_tensors(mask1, mask2, merge_direction, auto_scale)
+            return (merged_image, merged_mask)
+
+        else:
+            raise ValueError("未处理的输入组合")
+
+    def _create_white_mask_like_image(self, image):
+        """创建与图像相同大小的白色遮罩"""
+        batch, height, width = image.shape[:3]
+        return torch.ones((batch, height, width), dtype=torch.float32)
+
+    def _mask_to_image(self, mask):
+        """将遮罩转换为黑白图像"""
+        # mask格式: (batch, height, width)
+        # image格式: (batch, height, width, channels)
+        # 创建RGB图像，所有通道都使用mask的值
+        image = mask.unsqueeze(-1).repeat(1, 1, 1, 3)
+        return image
+
+    def _image_to_mask(self, image):
+        """将图像转换为遮罩（灰度）"""
+        # image格式: (batch, height, width, channels)
+        # mask格式: (batch, height, width)
+        if image.shape[-1] == 1:
+            # 灰度图像
+            return image.squeeze(-1)
+        elif image.shape[-1] >= 3:
+            # RGB或RGBA图像，转换为灰度
+            # 使用标准的灰度转换权重: 0.299*R + 0.587*G + 0.114*B
+            weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+            gray = torch.sum(image[..., :3] * weights, dim=-1)
+            return gray
+        else:
+            raise ValueError(f"不支持的图像通道数: {image.shape[-1]}")
+
+    def _merge_tensors(self, tensor1, tensor2, direction, auto_scale):
+        """拼接两个张量"""
+        # 检查批次维度
+        batch1 = tensor1.shape[0]
+        batch2 = tensor2.shape[0]
+
+        if batch1 != batch2:
+            if batch1 == 1:
+                # tensor1是单批次，扩展到与tensor2相同的批次
+                tensor1 = tensor1.repeat(batch2, 1, 1, *([1] * (len(tensor1.shape) - 3)))
+            elif batch2 == 1:
+                # tensor2是单批次，扩展到与tensor1相同的批次
+                tensor2 = tensor2.repeat(batch1, 1, 1, *([1] * (len(tensor2.shape) - 3)))
+            else:
+                raise ValueError(f"批次数量不匹配且都不为1: {batch1} vs {batch2}")
+
+        # 处理Alpha通道
+        tensor1, tensor2 = self._handle_alpha_channels(tensor1, tensor2)
+
+        # 自动缩放
+        if auto_scale:
+            tensor2 = self._auto_scale_tensor(tensor1, tensor2, direction)
+
+        # 执行拼接
+        if direction == "right":
+            return torch.cat([tensor1, tensor2], dim=2)  # 沿宽度拼接
+        elif direction == "left":
+            return torch.cat([tensor2, tensor1], dim=2)  # 沿宽度拼接
+        elif direction == "down":
+            return torch.cat([tensor1, tensor2], dim=1)  # 沿高度拼接
+        elif direction == "up":
+            return torch.cat([tensor2, tensor1], dim=1)  # 沿高度拼接
+        else:
+            raise ValueError(f"不支持的拼接方向: {direction}")
+
+    def _handle_alpha_channels(self, tensor1, tensor2):
+        """处理Alpha通道逻辑"""
+        # 只对图像张量处理Alpha通道（4维张量）
+        if len(tensor1.shape) != 4 or len(tensor2.shape) != 4:
+            return tensor1, tensor2
+
+        channels1 = tensor1.shape[-1]
+        channels2 = tensor2.shape[-1]
+
+        # 如果都有Alpha通道，保持不变
+        if channels1 == 4 and channels2 == 4:
+            return tensor1, tensor2
+
+        # 如果都没有Alpha通道，保持不变
+        if channels1 == 3 and channels2 == 3:
+            return tensor1, tensor2
+
+        # 如果一个有Alpha通道一个没有，去除Alpha通道
+        if channels1 == 4 and channels2 == 3:
+            tensor1 = tensor1[..., :3]  # 去除Alpha通道
+        elif channels1 == 3 and channels2 == 4:
+            tensor2 = tensor2[..., :3]  # 去除Alpha通道
+
+        return tensor1, tensor2
+
+    def _auto_scale_tensor(self, tensor1, tensor2, direction):
+        """自动缩放tensor2以匹配tensor1的对应边，保持原比例"""
+        current_height = tensor2.shape[1]
+        current_width = tensor2.shape[2]
+
+        if direction in ["left", "right"]:
+            # 左右拼接，需要匹配高度，按比例缩放宽度
+            target_height = tensor1.shape[1]
+
+            if target_height != current_height:
+                # 计算缩放比例
+                scale_ratio = target_height / current_height
+                new_width = int(current_width * scale_ratio)
+
+                # 使用插值缩放
+                if len(tensor2.shape) == 4:  # 图像
+                    # (batch, height, width, channels) -> (batch, channels, height, width)
+                    tensor2_scaled = tensor2.permute(0, 3, 1, 2)
+                    tensor2_scaled = torch.nn.functional.interpolate(
+                        tensor2_scaled, size=(target_height, new_width),
+                        mode='bilinear', align_corners=False
+                    )
+                    # (batch, channels, height, width) -> (batch, height, width, channels)
+                    tensor2 = tensor2_scaled.permute(0, 2, 3, 1)
+                else:  # 遮罩
+                    # (batch, height, width) -> (batch, 1, height, width)
+                    tensor2_scaled = tensor2.unsqueeze(1)
+                    tensor2_scaled = torch.nn.functional.interpolate(
+                        tensor2_scaled, size=(target_height, new_width),
+                        mode='bilinear', align_corners=False
+                    )
+                    # (batch, 1, height, width) -> (batch, height, width)
+                    tensor2 = tensor2_scaled.squeeze(1)
+
+        elif direction in ["up", "down"]:
+            # 上下拼接，需要匹配宽度，按比例缩放高度
+            target_width = tensor1.shape[2]
+
+            if target_width != current_width:
+                # 计算缩放比例
+                scale_ratio = target_width / current_width
+                new_height = int(current_height * scale_ratio)
+
+                # 使用插值缩放
+                if len(tensor2.shape) == 4:  # 图像
+                    # (batch, height, width, channels) -> (batch, channels, height, width)
+                    tensor2_scaled = tensor2.permute(0, 3, 1, 2)
+                    tensor2_scaled = torch.nn.functional.interpolate(
+                        tensor2_scaled, size=(new_height, target_width),
+                        mode='bilinear', align_corners=False
+                    )
+                    # (batch, channels, height, width) -> (batch, height, width, channels)
+                    tensor2 = tensor2_scaled.permute(0, 2, 3, 1)
+                else:  # 遮罩
+                    # (batch, height, width) -> (batch, 1, height, width)
+                    tensor2_scaled = tensor2.unsqueeze(1)
+                    tensor2_scaled = torch.nn.functional.interpolate(
+                        tensor2_scaled, size=(new_height, target_width),
+                        mode='bilinear', align_corners=False
+                    )
+                    # (batch, 1, height, width) -> (batch, height, width)
+                    tensor2 = tensor2_scaled.squeeze(1)
+
+        return tensor2
+
+# ------------------Math------------------
+CATEGORY_NAME = "WJNode/Math"
 
 class any_math:
     DESCRIPTION = """
@@ -1191,7 +1589,6 @@ class any_math:
                 print("Warning: You have calculated non image data! (image_math_value_v2)")
         return (image,mask,data)
 
-
 class any_math_v2(any_math):
     DESCRIPTION = """
         expression:高级表达式
@@ -1238,110 +1635,6 @@ class any_math_v2(any_math):
                 *self.handle_img(expression2,2),
                 *self.handle_img(expression,3),
                 )
-
-
-class image_math_value:
-    DESCRIPTION = """
-    expression: expression
-    clamp: If you want to continue with the next image_math_ralue, 
-            it is recommended not to open it
-    Explanation: The A channel of the image will be automatically removed, 
-            and the shape will be the data shape
-    Note: This node has been deprecated, please use image_math-value-v1
-
-    expression:表达式
-    clamp:如果要继续进行下一次image_math_value建议不打开
-    说明：会自动去掉image的A通道，shape为数据形状
-    注意：此节点已被弃用，请使用image_math_value_v1
-    """
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "expression":("STRING",{"default":"a+b","multiline": True}),
-                "clamp":("BOOLEAN",{"default":True}),
-            },
-            "optional": {
-                "a":("IMAGE",),
-                "b":("IMAGE",),
-                "c":("MASK",),
-                "d":("MASK",),
-            }
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE","MASK","LIST")
-    RETURN_NAMES = ("image","mask","shape")
-    FUNCTION = "image_math"
-    def image_math(self,expression,clamp,
-                   a=None, b=None, c=None, d=None):
-        image = None
-        mask = None
-        s = 0
-
-        # 获取所有输入的尺寸并计算目标尺寸
-        shapes = []
-        inputs = {'a': a, 'b': b, 'c': c, 'd': d}
-        for v in inputs.values():
-            if v is not None:
-                shapes.append(v.shape[1:3])  # 只取高度和宽度
-        
-        if shapes:
-            target_height = min(s[0] for s in shapes)
-            target_width = min(s[1] for s in shapes)
-
-            # 处理每个输入
-            for k, v in inputs.items():
-                if v is not None:
-                    # 去掉A通道
-                    if k in ['a', 'b'] and v.shape[-1] == 4:
-                        v = v[..., 0:-1]
-                    
-                    # 调整尺寸
-                    if v.shape[1] != target_height or v.shape[2] != target_width:
-                        v = self._resize_tensor(v, target_height, target_width)
-                    
-                    # 遮罩转3通道
-                    if k in ['c', 'd']:
-                        v = v.unsqueeze(-1).expand(-1, -1, -1, 3)
-                    
-                    inputs[k] = v
-
-        # 更新局部变量
-        a, b, c, d = inputs['a'], inputs['b'], inputs['c'], inputs['d']
-
-        try:
-            local_vars = locals().copy()
-            exec(f"image = {expression}", {}, local_vars)
-            image = local_vars.get("image")
-        except:
-            print("Warning: Invalid expression !, will output null value.")
-
-        if image is not None:
-            if clamp:
-                image = torch.clamp(image, 0.0, 1.0)
-            s = list(image.shape)
-            mask = torch.mean(image, dim=3, keepdim=False)
-        return (image,mask,s)
-
-    def _resize_tensor(self, tensor, target_height, target_width):
-        """调整张量尺寸"""
-        if tensor.dim() == 3:  # 处理mask
-            tensor = tensor.unsqueeze(-1)
-            tensor = F.interpolate(
-                tensor.permute(0, 3, 1, 2),
-                size=(target_height, target_width),
-                mode='bilinear',
-                align_corners=False
-            ).permute(0, 2, 3, 1).squeeze(-1)
-        else:  # 处理image
-            tensor = F.interpolate(
-                tensor.permute(0, 3, 1, 2),
-                size=(target_height, target_width),
-                mode='bilinear',
-                align_corners=False
-            ).permute(0, 2, 3, 1)
-        return tensor
-
 
 # The following is a test and has not been imported yet 以下为测试，暂未导入
 CATEGORY_NAME = "WJNode/temp"
@@ -1391,21 +1684,21 @@ class SaveImage1: #参考
 
 
 NODE_CLASS_MAPPINGS = {
-    #WJNode/Image
+    #WJNode/ImageFile
     "Load_Image_From_Path": Load_Image_From_Path,
     "Save_Image_To_Path": Save_Image_To_Path,
     "Save_Image_Out": Save_Image_Out,
     "Load_Image_Adv": Load_Image_Adv,
-
-    #WJNode/ImageEdit
+    #WJNode/ImageCrop
     "adv_crop": adv_crop,
+    #WJNode/ImageEdit
     "invert_channel_adv": invert_channel_adv,
-    # "ToImageListData": to_image_list_data,
     "ListMerger": ListMerger,
-    # "ImageChannelBus": image_channel_bus,
     "Bilateral_Filter": Bilateral_Filter,
     "image_math": image_math,
     "image_math_value": image_math_value,
+    "Robust_Imager_Merge": Robust_Imager_Merge,
+    #WJNode/ImageMath
     "any_math": any_math,
     "any_math_v2": any_math_v2,
 }
