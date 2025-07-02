@@ -8,7 +8,9 @@ omegaconf
 plyfile
 huggingface_hub
 pillow
+pydub
 #The following may already be present:
 #numpy
 #torch
 #easyocr
+#pydub-optional

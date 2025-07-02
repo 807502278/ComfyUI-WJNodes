@@ -5,7 +5,7 @@ import logging
 import torchaudio.functional as res
 import librosa
 
-CATEGORY_NAME = "WJNode/video/Audio"
+CATEGORY_NAME = "WJNode/Audio"
 
 #音频采样率调整
 class audio_resample:
@@ -95,7 +95,7 @@ class audio_scale:
     RETURN_NAMES = ("audio",)
     FUNCTION = "audio_scale"
 
-    def audio_scale(self, audio, scale):
+    def audio_scale(self, audio, scale,):
         if scale == 1:
             return (audio,)
         else:
@@ -114,7 +114,70 @@ class audio_scale:
             new_audio["waveform"] = audio_data_new
         return (new_audio,)
 
+
+class AudioDuration_wan:
+    DESCRIPTION = """
+    Calculate the frame length of a video/wan video based on time (in seconds)  
+    Can calculate duration and video frame rate through audio (ignore custom time if audio is input)
+    通过时间(秒)计算视频/wan视频的帧长度
+    可通过音频计算时长和视频帧数(如果输入了音频则忽略自定义时间)
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        alignment_list = ["None","4n+1","6n+1","8n+1(wan2.1)","10n+1","15n+1","16n+1"]
+        return {
+            "required": {
+                "time_custom": ("FLOAT", {"default": 0, "min": 0, "max": 1000000, "step": 0.001}),
+                "video_fps": ("FLOAT", {"default": 16, "min": 1, "max": 640, "step": 0.001}),
+                "alignment_frames": (alignment_list, {"default": "8n+1(wan2.1)"}),
+            },
+            "optional": {
+                "audio": ("AUDIO",),
+            }
+        }
+
+    RETURN_TYPES = ("FLOAT","INT")  # 返回音频的时长，单位为秒，浮点数格式
+    RETURN_NAMES = ("time(s)", "video_frames")
+    CATEGORY = CATEGORY_NAME
+    FUNCTION = "calculate_duration"
+
+    def calculate_duration(self, time_custom, video_fps, alignment_frames, audio=None):
+        segment = 0.0
+        duration_seconds = 0.0
+        if time_custom == 0 and audio is None: #时长和音频都未输入直接报错
+            print("Error: No audio input and custom time is 0!")
+            return (segment,0)
+        elif time_custom != 0 and audio is None: #直接转换时长为帧数
+            duration_seconds = time_custom
+        elif time_custom == 0 and audio is not None: #通过音频计算时长
+            duration_seconds = self.handle_audio(audio)
+        elif time_custom != 0 and audio is not None: 
+            #将音频剪切到指定时长后再转换为帧数,暂未开发，使用开始可结束来剪切更有意义
+            ...
+
+        frames = int(round(duration_seconds * video_fps))
+        if alignment_frames != "None":
+            n = int(alignment_frames.split("n+")[0])
+            frames = int(round(frames / n)) * n + 1
+        return (duration_seconds,frames)
+    
+    def handle_audio(self, audio):
+        waveform = audio['waveform'].squeeze(0).numpy() * 32768  # 转换为numpy并放大
+        waveform = waveform.astype(np.int16)
+        sample_rate = audio['sample_rate']
+        # 使用AudioSegment从numpy数组创建音频
+        from pydub import AudioSegment
+        segment = AudioSegment(
+            data=waveform.tobytes(),
+            sample_width=2,  # 16-bit audio
+            frame_rate=sample_rate,
+            channels=1
+        )
+        return len(segment) / 1000.0
+
+
 NODE_CLASS_MAPPINGS = {
     "audio_resample": audio_resample,
-    "audio_scale": audio_scale,
+    "audio_scale": audio_scale, 
+    "AudioDuration_wan": AudioDuration_wan,
 }
