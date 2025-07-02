@@ -9,88 +9,126 @@
 
 **Node list:**
 
-- Image: WJNode/Image
-  - ✅`load image from path` : Load image from path
-  - ✅`save image to path` : Save image by overwriting the path
-  - ✅`save image out` : Save image to output and output the path
-  - ✅`select images batch` : Batch selection and recombination of batches,updated mask support in 20250115
-  - ✅`select images batch` : 20250115 Batch Selection and Recombination of More Functions
-  - ✅`load image adv` : Load image with mask inversion and path output
+- ImageFile: WJNode/ImageFile
+  - ✅`Load_Image_From_Path` : Load image from path
+  - ✅`Save_Image_To_Path` : Save image by overwriting the path
+  - ✅`Save_Image_Out` : Save image to output and output the path
+  - ✅`Load_Image_Adv` : Load image with mask inversion and path output, supports multiple formats (jpg, png, jpeg, webp, tiff, bmp, gif, ico, svg)
+- ImageCrop: WJNode/ImageCrop
+  - ✅`adv_crop` : Advanced cropping: can quickly crop/expand/move/flip images, can output background masks and custom filling
+- ImageEdit: WJNode/ImageEdit
+  - ✅`invert_channel_adv` : Invert/separate image channels, RGBA to mask batch, replace channels, any channel to RGBA
+  - ✅`ListMerger` : Merge multiple image lists into a single batch
+  - ✅`Bilateral_Filter` : Image/Mask Bilateral Filtering: Can repair layered distortion caused by color or brightness scaling
+  - ✅`image_math` : Image mathematical operations with expression support
+  - ✅`image_math_value` : Image and value mathematical calculations
+  - ✅`Robust_Imager_Merge` : Advanced image merging with robust handling
+- Math: WJNode/Math
+  - ✅`any_math` : Any data calculation, supports pure data input such as images/values/arrays, and outputs images or any data type
+  - ✅`any_math_v2` : Support arbitrary data calculation with more inputs and 3 sets of outputs
+- Batch: WJNode/Batch
+  - ✅`Select_Images_Batch` : Batch selection and recombination of images/masks with index support
+  - ✅`Select_Batch_v2` : Advanced batch selection with loop, limit, and processing options
+  - ✅`SelectBatch_paragraph` : Paragraph-based batch selection
+  - ✅`Batch_Average` : Average cutting of image/mask batches with division and completion options
+- Color: WJNode/Color
+  - ✅`load_color_config` : Load color configuration for color block to mask, supports ADE20K preprocessing color data
+  - ✅`color_segmentation` : Color block to mask conversion, supports ADE20K and SAM2 data preprocessing
+  - ✅`color_segmentation_v2` : Enhanced color block to mask v2, uses keys in color configuration to select masks
+  - ✅`filter_DensePose_color` : Filter DensePose color data
+  - ✅`load_ColorName_config` : Load color name configuration
+  - ✅`Color_check_Name` : Check color names and filter color data
+  - ✅`Color_Data_Break` : Break down color data into components
+- Mask Editing: WJNode/MaskEdit
+  - ✅`mask_select_mask` : Mask selection within a mask batch (intersection represents selection)
+  - 🟩`coords_select_mask` : Coordinate selection of masks, used to assist SAM2 video keying (under development)
+  - ✅`mask_line_mapping` : Mask line mapping, can automatically calculate maximum and minimum values when input is -1 or 256
+  - ✅`mask_and_mask_math` : Mask to mask operations, supports addition/subtraction/intersection/multiplication operations, \
+                  Adjustable cv2 and torch modes, if cv2 is not installed, automatically switches to torch
+- Crop: WJNode/crop
+  - ✅`Accurate_mask_clipping` : Accurately find mask boundaries and optionally crop to those boundaries
+  - ✅`crop_by_bboxs` : Crop images using bounding box data
+- Mask Crop: WJNode/crop/mask_crop
+  - ✅`mask_crop_square` : Square cropping based on mask data
+  - ✅`mask_crop_option_SmoothCrop` : Smooth cropping with advanced options
+  - ✅`mask_crop_option_Basic` : Basic mask cropping options
+  - ✅`crop_data_edit` : Edit and modify crop data
+  - ✅`crop_data_CoordinateSmooth` : Coordinate smoothing for crop data
+- Video Merge: WJNode/video/merge
+  - ✅`Video_fade` : Two video segments can choose two ways to fade in and out
+  - ✅`SaveMP4` : Save single video as MP4 format
+  - ✅`SaveMP4_batch` : Save video batch as MP4 format
+  - ✅`Video_MaskBasedSplit` : Split video based on mask data
+  - ✅`Detecting_videos_mask` : Detect masks in video sequences
+  - ✅`Cutting_video` : Cut video sequences based on segment data
+  - ✅`Video_OverlappingSeparation_test` : Test overlapping separation in videos
+- GetData: WJNode/GetData
+  - ✅`Mask_Detection` : Mask detection: detect whether there is a mask, detect whether it is all hard edges, \
+                  detect whether the mask is pure white/pure black/pure gray and output values 0-255
+  - ✅`get_image_data` : Obtain basic data from images/masks (batch/width/height/maximum value)
+- Other Functions: WJNode/Other-functions
+  - ✅`Any_Pipe` : Group any data, known bug: nested grouping will split
+  - ✅`Determine_Type` : Display data type and determine data characteristics
+- Other: WJNode/Other
   - 🟩Load value feature recognition model (e.g., nsfw, aesthetic score, AI value, time)
   - 🟩Input recognition model and image batch, output batch and corresponding feature values
   - 🟩Sort image batches through specified arrays (e.g., feature value arrays)
-- Mask Editing: WJNode/MaskEdit
-  - ✅`load_color_config` : Load color configuration for color block to mask, currently supports loading ADE20K pre-processing color data
-  - ✅`color_segmentation` : Color block to mask, currently supports pre-processing ADE20K and SAM2 data
-  - ✅`color_segmentation_v2` : Color block to mask v2, uses keys in color configuration to select masks, only supports ADE20K data
-  - ✅`mask_select_mask` : Mask selection within a mask batch (intersection represents selection)
-  - 🟩`coords_select_mask` : Coordinate selection of masks, used to assist SAM2 video keying (under development)
-  - ✅`mask_line_mapping` : Mask line mapping, can automatically calculate maximum and minimum values when input is -1 or 256, 
-                  can map to specified values
-  - ✅`mask_and_mask_math` : Mask to mask operations, supports addition/subtraction/intersection/multiplication operations, \
-                  Adjustable cv2 and torch modes, if cv2 is not installed, automatically switches to torch
-  - 🟩`Accurate_mask_clipping` : Precise search for mask bbox boundaries (under development)
-- Image Editing: WJNode/ImageEdit
-  - ✅`adv crop` : Advanced cropping: can quickly crop/expand/move/flip images, can output background masks and custom filling \
-                  (Usage method included in the node, known bug: expansion size more than 1 times cannot use tiling and mirror filling)
-  - ✅`mask detection` : Mask detection: detect whether there is a mask, detect whether it is all hard edges, \
-                  detect whether the mask is pure white/pure black/pure gray and output values 0-255
-  - ✅`InvertChannelAdv` : Invert/separate image channels Image ⭐\
-                  RGBA to mask batch Replace channels \
-                  Any channel to RGBA
-  - ✅`Bilateral Filter` : Image/Mask Bilateral Filtering: Can repair layered distortion caused by color or brightness scaling in images
-  - ✅`any_math` : Any data calculation, supports pure data input such as images/values/arrays, and outputs images or any data type
-  - ✅`any_math_v2` : Support arbitrary data calculation with more inputs and 3 sets of outputs
-  - ✅`Image_ValueMath` : Image and image calculation, optional cv2 or torch mode
--Video Editor: WJNode/Video
-  - ✅`Video_fade` : Two video segments can choose two ways to fade in and out, \
-                  Mask: Local fade in and out under development... \
-                  Exponential: Exponential gradient under development...
-- Others: WJNode/Other-functions
-  - ✅`any_data` : Group any data, known bug: nested grouping will split
-  - ✅`show_type` : Display data type
-  - ✅` array_count` :  20250109 Change the original array_element_comunt node to array_count\
-                        Retrieve data shape (array format), count the number of elements at a specified depth, \
-                            count the number of all elements, and count image data\
-                        If changes to this node cause your workflow to fail to run, please notify me
-  - ✅` get image data` :  20250109 Obtain basic data from images/masks (batch/width/height/maximum value)
-- Detection: WJNode/Detection
-  - ✅`load_similarity_model` : Load pre-trained image similarity models (ResNet, DenseNet, etc.) for feature extraction
-  - ✅`image_similarity` : Calculate similarity between images using loaded models and various distance metrics
+- Detection: WJNode/Other-plugins/Detection
+  - ✅`load_torchvision_model` : Load pre-trained torchvision models (ResNet, DenseNet, etc.) for feature extraction
+  - ✅`Run_torchvision_model` : Calculate similarity between images using loaded models and various distance metrics
 - Hardware: WJNode/Other-node
   - ✅`Graphics_Detection_Reference` : Test GPU computing capabilities including hardware info, precision tests, memory bandwidth, \
                   operator performance, and AI benchmarks with RTX 4090 comparison
-- Plugins: WJNode/Other-plugins(To use the following nodes, you must install the following plugins)
+- WAS Plugins: WJNode/Other-plugins/WAS (To use the following nodes, you must install WAS plugin)
   - ✅`WAS_Mask_Fill_Region_batch` : Optimize WAS plugin's WAS_Mask_Fill_Region (mask cleanup) to support batches\
   [Thanks to @WASasquatch](https://github.com/WASasquatch/was-node-suite-comfyui)
-  - ✅`SegmDetectorCombined_batch` : Optimize impack-pack plugin's SegmDetectorCombined (segm detection mask) to support batches\
+- Impact Pack Plugins: WJNode/Other-plugins (To use the following nodes, you must install Impact Pack plugin)
+  - ✅`SegmDetectorCombined_batch` : Optimize impact-pack plugin's SegmDetectorCombined (segm detection mask) to support batches\
   [Thanks to @ltdrdata](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
-  - ✅`bbox_restore_mask` : Add impack-pack plugin's seg decomposition, restore cropped images through cropping data (SEG editing)
-  - ✅`Sam2AutoSegmentation_data` : Add Sam2AutoSegmentation (kijia) node's color list/coordinate output, used to assist SAM2 video keying\
+  - ✅`bbox_restore_mask` : Add impact-pack plugin's seg decomposition, restore cropped images through cropping data (SEG editing)
+  - ✅`Sam2AutoSegmentation_data` : Add Sam2AutoSegmentation (kijai) node's color list/coordinate output, used to assist SAM2 video keying\
   [Thanks to @kijai](https://github.com/kijai/ComfyUI-segment-anything-2)
-  - ✅`ApplyEasyOCR batch` : Modify OCR recognition nodes to load models separately for faster operation and model caching\
+  - ✅`run_yolo_bboxs` : Run YOLO detection and return bounding boxes
+  - ✅`run_yolo_bboxs_v2` : Enhanced YOLO detection with additional features
+- EasyOCR Plugins: WJNode/Other-plugins/EasyOCR (To use the following nodes, you must install EasyOCR)
+  - ✅`load_EasyOCR_model` : Load OCR models separately for faster operation and model caching
+  - ✅`ApplyEasyOCR_batch` : Modify OCR recognition nodes to support batch processing\
   [Thanks to @prodogape](https://github.com/prodogape/ComfyUI-EasyOCR)
-  - ✅`load EasyOCR model` : load OCR models.
 - Path: WJNode/Path
-  - ✅`comfyui path` : Output comfyui common paths (root, output/input, plugins, models, cache, Python environment)
-  - ✅`path append` : Add prefix/suffix to strings (reference KJNode)
-  - ✅`del file` : Detect whether file or path exists, whether to delete file, operation requires input signal, deletion requires write permission
-  - ✅`split path` : Path slicing, input path, output: disk symbol/path/file/extension + detect whether it is a file
+  - ✅`ComfyUI_Path_Out` : Output ComfyUI common paths (root, output/input, plugins, models, cache, Python environment)
+  - ✅`Str_Append` : Add prefix/suffix to strings (reference KJNode)
+  - ✅`del_file` : Detect whether file or path exists, whether to delete file, operation requires input signal, deletion requires write permission
+  - ✅`Split_Path` : Path slicing, input path, output: disk symbol/path/file/extension + detect whether it is a file
+  - ✅`Folder_Operations_CH` : Folder operations with Chinese support
 
 
-## models dir: （Not required）
-These models are in the same path as the original plugin and do not need to be downloaded repeatedly
+## Models Directory (Optional)
+These models are automatically downloaded to ComfyUI's models directory and shared with other plugins:
 ```
-models
-    ├──torchvision
-    │   └──resnet
-    │       ├──resnet50-11ad3fa6.pth
-    │       └──...
-    ├──EasyOCR
-    │   ├──craft_mlt_25k.pth
-    │   ├──latin_g2.pth
-    │   └──zh_sim_g2.pth
-    └──sam2
-        ├──sam2_hiera_small.safetensors
-        └──...
+models/
+├── torchvision/              # Torchvision models for similarity detection
+│   └── resnet/
+│       ├── resnet50-11ad3fa6.pth
+│       └── ...
+├── EasyOCR/                  # OCR models
+│   ├── craft_mlt_25k.pth
+│   ├── latin_g2.pth
+│   └── zh_sim_g2.pth
+└── sam2/                     # SAM2 models (if using SAM2 features)
+    ├── sam2_hiera_small.safetensors
+    └── ...
+```
+
+## Installation
+
+1. Clone or download this repository to your ComfyUI custom_nodes directory:
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/807502278/ComfyUI-WJNodes.git
+```
+
+2. Install dependencies (optional, most are already included in ComfyUI):
+```bash
+cd ComfyUI-WJNodes
+pip install -r requirements.txt
 ```
