@@ -9,7 +9,7 @@ from ..moduel.str_edit import str_edit
 from ..moduel.color_utils import distance_color,convert_color,convert_rgb_1_255
 from ..config.color_name.color_data_edit import select_region,NameSelect_ColorData
 from ..config.seg_color.color_data import DensePose_Data
-CATEGORY_NAME = "WJNode/Color"
+CATEGORY_NAME = "WJNode/ImageEdit/Color"
 
 
 class load_color_config:

@@ -139,7 +139,7 @@ def update_options(s_add, s_orig = None, key = None, temp_key = None):
         return (s_orig,)
 
 
-CATEGORY_NAME = "WJNode/Image_Blend"
+CATEGORY_NAME = "WJNode/ImageBlend"
 
 
 class ImageCompositeMask_Adv:
@@ -1655,7 +1655,7 @@ class maskCompositeMask_Adv:
         return faded
 
 
-CATEGORY_NAME = "WJNode/Image_Blend/options_adv"
+CATEGORY_NAME = "WJNode/ImageBlend/options_adv"
 
 
 class Composite_Global_adv:
@@ -2074,7 +2074,7 @@ class Composite_Application_pro:
         return (Options,)
 
 
-CATEGORY_NAME = "WJNode/Image_Blend/options"
+CATEGORY_NAME = "WJNode/ImageBlend/options"
 
 
 class Composite_Mask:

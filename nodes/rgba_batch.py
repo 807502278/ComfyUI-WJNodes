@@ -4,7 +4,7 @@ import numpy as np
 from ..moduel.str_edit import str_edit
 
 # ------------------GetData nodes------------------
-CATEGORY_NAME = "WJNode/Batch"
+CATEGORY_NAME = "WJNode/ImageEdit/Batch"
 
 
 class Select_Images_Batch:

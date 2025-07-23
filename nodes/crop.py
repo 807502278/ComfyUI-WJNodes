@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-CATEGORY_NAME = "WJNode/crop"
+CATEGORY_NAME = "WJNode/ImageCrop"
 
 mask_crop_DefaultOption = {
     "inversion_mask":False,
@@ -339,7 +339,7 @@ class crop_by_bboxs_v2: #待开发
     ...
 
 
-CATEGORY_NAME = "WJNode/crop/mask_crop"
+CATEGORY_NAME = "WJNode/ImageCrop/mask_crop"
 
 #masks裁剪方形
 class mask_crop_square:
