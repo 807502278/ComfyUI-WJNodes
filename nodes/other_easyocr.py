@@ -178,8 +178,8 @@ class ApplyEasyOCR_batch:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
-                "Merge_mask": ("BOOLEAN",{"default": True},),
+                "images": ("IMAGE",),
+                "merge_mask": ("BOOLEAN",{"default": True},),
                 "invert_mask": ("BOOLEAN",{"default": False},),
                 "EasyOCR_model": ("EasyOCR_model",),
             },
@@ -189,15 +189,14 @@ class ApplyEasyOCR_batch:
     FUNCTION = "main"
     RETURN_TYPES = ("MASK","JSON",)
 
-    def main(self, image, Merge_mask, invert_mask, EasyOCR_model):
+    def main(self, images, merge_mask, invert_mask, EasyOCR_model):
         res_masks = []
         res_labels = []
-        m_masks = []
-        _, height, width, _ = image.shape
+        _, height, width, _ = images.shape
 
         i = 0
-        for item in image:
-            i += 1
+        for item in images:
+            # tensor转pil
             image_pil = Image.fromarray(np.clip(255.0 * item.cpu().numpy(), 0, 255).astype(np.uint8)).convert("RGB")
 
             # OCR检测
@@ -206,29 +205,22 @@ class ApplyEasyOCR_batch:
             pred_dict = {"size": [size[1], size[0]],"result":result}
 
             # 绘制遮罩
+            i += 1
             mask_tensor, labelme_data = plot_boxes_to_image(image_pil, pred_dict, group_id = i)
 
+            # 未检测到则使用一个全黑遮罩
+            if len(mask_tensor) == 0:
+                mask_tensor = [torch.zeros((1,height, width), dtype=torch.float32)]
+            # 如果遮罩不止一张且需要合并遮罩
+            elif len(mask_tensor) > 1 and merge_mask:
+                mask_tensor = torch.sum(torch.stack(mask_tensor, dim=0), dim=0)
+                mask_tensor = [torch.clamp(mask_tensor, 0.0, 1.0)]
+
+            # 收集遮罩
             res_masks.extend(mask_tensor)
             res_labels.append(labelme_data)
 
-            # 未检测到返回一个全黑遮罩
-            if len(res_masks) == 0:
-                mask = np.zeros((height, width, 1), dtype=np.uint8)
-                empty_mask = torch.from_numpy(mask).permute(2, 0, 1).float() / 255.0
-                res_masks.extend(empty_mask)
-
-            # 合并遮罩
-            if Merge_mask:
-                if len(res_masks) >= 1:
-                    mask_temp = res_masks[0]
-                    for i in range(len(res_masks)-1):
-                        mask_temp = torch.add(mask_temp,res_masks[i+1])
-                    m_masks.append(mask_temp)
-                
-        if Merge_mask:
-            res_masks = torch.cat(m_masks, dim=0)
-        else :
-            res_masks = torch.cat(res_masks, dim=0)
+        res_masks = torch.cat(res_masks, dim=0)
         if invert_mask:
             res_masks = 1 - res_masks
         return (res_masks,res_labels,)
