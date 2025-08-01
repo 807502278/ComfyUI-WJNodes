@@ -103,11 +103,22 @@ class Mask_Detection:
 
 class get_image_data:
     DESCRIPTION = """
-    Obtain image data
-    If both image and mask are input at the same time, 
-        image data will be prioritized for output
-    获取图像数据
-    若同时输入image和mask,会优先输出image数据
+    EN/English:
+    Obtain image size data including batch count, height, width, channels and shape information.
+    If both image and mask are input at the same time, image data will be prioritized for output.
+
+    Output description:
+        "images","masks": Input images and masks
+        "N","H","W","C": Batch count/Height/Width/Channels of the image
+        "shape": Complete array information of count/size/channels
+
+    中文/Chinese:
+    获取图像尺寸数据
+        若同时输入image和mask,会优先输出image数据
+    输出说明：
+        "images","masks"：输入的图像和遮罩
+        "N","H","W","C"：图像的批次/高度/宽度/通道数
+        "shape"：图像的完整数量/尺寸/通道数组信息
     """
     @classmethod
     def INPUT_TYPES(s):
@@ -115,28 +126,164 @@ class get_image_data:
             "required": {
             },
             "optional": {
-                "image":("IMAGE",),
-                "mask":("MASK",),
+                "images":("IMAGE",),
+                "masks":("MASK",),
             }
         }
     CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("INT","INT","INT","INT","LIST","INT","INT")
-    RETURN_NAMES = ("N","H","W","C","shape","max_HW","min_HW")
-    FUNCTION = "element_count"
+    RETURN_TYPES = ("IMAGE","MASK","INT","INT","INT","INT","LIST")
+    RETURN_NAMES = ("images","masks","N","H","W","C","shape")
+    FUNCTION = "get_size_data"
 
-    def element_count(self, image = None, mask = None):
-        shape = [0,0,0,0]
-        if image is None:
-            if mask is None:
-                pass
-            else:
-                shape = list(mask.shape)
-                shape.append(1)
-        else:
-            shape = list(image.shape)
+    def get_size_data(self, images = None, masks = None):
+        # Initialize default values
+        shape = [0, 0, 0, 0]  # [N, H, W, C]
+        N = H = W = C = 0
 
-        m = [max(shape[1:3]),min(shape[1:3])]
-        return (*shape,shape,*m)
+        # Determine which data to use (prioritize images over masks)
+        if images is not None:
+            shape = list(images.shape)  # [N, H, W, C]
+            N, H, W, C = shape[0], shape[1], shape[2], shape[3]
+        elif masks is not None:
+            if len(masks.shape) == 3:  # [N, H, W]
+                shape = list(masks.shape) + [1]  # Add channel dimension
+                N, H, W, C = shape[0], shape[1], shape[2], 1
+            else:  # [N, H, W, C] if masks already have channel dimension
+                shape = list(masks.shape)
+                N, H, W, C = shape[0], shape[1], shape[2], shape[3]
+
+        return (images, masks, N, H, W, C, shape)
+
+class get_image_ratio:
+    DESCRIPTION = """
+    EN/English:
+    Obtain image aspect ratio data including maximum/minimum dimensions, ratio values and ratio classification.
+    If both image and mask are input at the same time, image data will be prioritized for output.
+
+    Output description:
+        "images","masks": Input images and masks
+        "max_HW","min_HW": Maximum and minimum values of height/width
+        "ratio_float": Actual aspect ratio as float
+        "ratio_str": Nearest integer ratio in string format (e.g., "16:9", "4:3")
+        "ratio_class": Ratio type classification (0=square, 1=wide, 2=tall)
+
+    中文/Chinese:
+    获取图像比例数据
+        若同时输入image和mask,会优先输出image数据
+    输出说明：
+        "images","masks"：输入的图像和遮罩
+        "max_HW","min_HW"：尺寸最值
+        "ratio_float"：尺寸实际比例
+        "ratio_str"：最接近的整数比例字符串形式
+        "ratio_class"：比例类型(0方形，1宽图，2长图)
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+            },
+            "optional": {
+                "images":("IMAGE",),
+                "masks":("MASK",),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = ("IMAGE","MASK","INT","INT","FLOAT","STRING","INT")
+    RETURN_NAMES = ("images","masks","max_HW","min_HW","ratio_float","ratio_str","ratio_class")
+    FUNCTION = "get_ratio_data"
+
+    def get_ratio_data(self, images = None, masks = None):
+        # Initialize default values
+        max_HW = 0
+        min_HW = 0
+        ratio_float = 1.0
+        ratio_str = "1:1"
+        ratio_class = 0  # 0=square, 1=wide, 2=tall
+
+        # Determine which data to use (prioritize images over masks)
+        data_tensor = None
+        shape = []
+
+        if images is not None:
+            data_tensor = images
+            shape = list(images.shape)  # [N, H, W, C]
+        elif masks is not None:
+            data_tensor = masks
+            shape = list(masks.shape)  # [N, H, W] or [N, H, W, C]
+
+        # Calculate dimensions if we have data
+        if data_tensor is not None and len(shape) >= 3:
+            H, W = shape[1], shape[2]
+
+            # Calculate max and min dimensions
+            max_HW = max(H, W)
+            min_HW = min(H, W)
+
+            # Calculate aspect ratio
+            if min_HW > 0:
+                ratio_float = max_HW / min_HW
+
+                # Determine ratio class
+                if abs(ratio_float - 1.0) < 0.1:  # Nearly square (within 10% tolerance)
+                    ratio_class = 0  # Square
+                elif W > H:
+                    ratio_class = 1  # Wide
+                else:
+                    ratio_class = 2  # Tall
+
+                # Calculate nearest integer ratio string
+                ratio_str = self._calculate_ratio_string(W, H)
+
+        return (images, masks, max_HW, min_HW, ratio_float, ratio_str, ratio_class)
+
+    def _calculate_ratio_string(self, width, height):
+        """Calculate the nearest integer ratio string like '16:9', '4:3', etc."""
+
+        # Find GCD to simplify the ratio
+        def gcd(a, b):
+            while b:
+                a, b = b, a % b
+            return a
+
+        # Handle edge cases
+        if width == 0 or height == 0:
+            return "1:1"
+
+        # Calculate GCD and simplify ratio
+        common_divisor = gcd(width, height)
+        simplified_w = width // common_divisor
+        simplified_h = height // common_divisor
+
+        # If the simplified ratio is too large, find a close approximation
+        if simplified_w > 50 or simplified_h > 50:
+            # Common aspect ratios to check against
+            common_ratios = [
+                (1, 1), (4, 3), (3, 2), (16, 10), (5, 3), (16, 9),
+                (21, 9), (2, 1), (3, 1), (4, 1), (5, 1)
+            ]
+
+            target_ratio = width / height
+            best_match = (1, 1)
+            best_diff = float('inf')
+
+            for w_ratio, h_ratio in common_ratios:
+                ratio = w_ratio / h_ratio
+                diff = abs(ratio - target_ratio)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_match = (w_ratio, h_ratio)
+
+                # Also check the inverse ratio
+                ratio = h_ratio / w_ratio
+                diff = abs(ratio - target_ratio)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_match = (h_ratio, w_ratio)
+
+            simplified_w, simplified_h = best_match
+
+        return f"{simplified_w}:{simplified_h}"
+    
 
 
 CATEGORY_NAME = "WJNode/Other-node"
@@ -939,6 +1086,7 @@ NODE_CLASS_MAPPINGS = {
     #WJNode/GetData
     "Mask_Detection": Mask_Detection,
     "get_image_data": get_image_data,
+    "get_image_ratio": get_image_ratio,
     #WJNode/Other-functions
     "Any_Pipe": Any_Pipe,
     "Determine_Type": Determine_Type,
