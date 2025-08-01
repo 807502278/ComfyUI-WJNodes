@@ -1409,6 +1409,158 @@ class Robust_Imager_Merge:
 
         return tensor2
 
+class image_scale_pixel_v2:
+    DESCRIPTION = """
+    图像按像素缩放
+    输入说明：
+        TotalPixels：缩放后的总像素(接近),单位：百万像素
+        alignment：缩放后的宽度和高度将为alignment的倍数
+        size_mode：fill-填充/crop-裁剪
+        method：缩放方法
+    输出说明：
+        遮罩和图像各自缩放，尺寸互不影响
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "TotalPixels": ("FLOAT", {"max": 512.0, "min": 0.0001, "step": 0.0001,"default": "1.0"}),
+                "alignment": (["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024"], {"default": "32"}),
+                "size_mode": (["fill", "crop"], {"default": "fill"}),
+                "method": (["LANCZOS", "BILINEAR", "BICUBIC", "BOX", "HAMMING", "NEAREST"], {"default":"LANCZOS"}),
+            },
+            "optional": {
+                "images": ("IMAGE",),
+                "masks": ("MASK",),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_NAMES = ("image", "mask")
+    FUNCTION = "scale_image"
+    CATEGORY = CATEGORY_NAME
+
+    def scale_image(self, TotalPixels, alignment, size_mode, method, images=None, masks=None):
+        # 转换alignment为整数
+        alignment = int(alignment)
+        # 将百万像素转换为实际像素数
+        target_pixels = TotalPixels * 1000000
+        # 处理图像
+        processed_images = None
+        if images is not None:
+            processed_images = self._scale_tensor(images, target_pixels, alignment, size_mode, method, is_image=True)
+        # 处理遮罩
+        processed_masks = None
+        if masks is not None:
+            processed_masks = self._scale_tensor(masks, target_pixels, alignment, size_mode, method, is_image=False)
+        return (processed_images, processed_masks)
+
+    def _scale_tensor(self, tensor, target_pixels, alignment, size_mode, method, is_image=True):
+        """缩放张量到目标像素数"""
+        import math
+        if tensor is None:
+            return None
+        # 获取原始尺寸
+        original_height = tensor.shape[1]
+        original_width = tensor.shape[2]
+        original_pixels = original_height * original_width
+        # 1. 先计算按当前图像比例最接近指定总像素的尺寸wh
+        scale_factor = math.sqrt(target_pixels / original_pixels)
+        target_height = int(original_height * scale_factor)
+        target_width = int(original_width * scale_factor)
+        # 对齐到指定倍数
+        if alignment > 1:
+            target_height = ((target_height + alignment - 1) // alignment) * alignment
+            target_width = ((target_width + alignment - 1) // alignment) * alignment
+        # 确保最小尺寸
+        target_height = max(target_height, alignment)
+        target_width = max(target_width, alignment)
+        # 2. 根据size_mode处理
+        if size_mode == "fill":
+            # 拉伸模式：直接拉伸到目标尺寸
+            final_height = target_height
+            final_width = target_width
+            crop_needed = False
+        else:  # size_mode == "crop"
+            # 裁剪模式：等比缩放后裁剪
+            crop_needed = True
+            # 3.1: 按宽度对齐到目标宽度等比缩放
+            width_scale = target_width / original_width
+            scaled_height_by_width = int(original_height * width_scale)
+            if scaled_height_by_width > target_height:
+                # 3.1: 高度超出，按宽度缩放后裁剪高度
+                final_width = target_width
+                final_height = scaled_height_by_width
+                crop_dim = "height"
+                crop_target = target_height
+            elif scaled_height_by_width == target_height:
+                # 完全匹配，不需要裁剪
+                final_width = target_width
+                final_height = target_height
+                crop_needed = False
+            else:
+                # 3.2: 高度没有超出，按高度缩放后裁剪宽度
+                height_scale = target_height / original_height
+                scaled_width_by_height = int(original_width * height_scale)
+                final_height = target_height
+                final_width = scaled_width_by_height
+                crop_dim = "width"
+                crop_target = target_width
+        # 执行缩放
+        if is_image:
+            # 图像张量 (batch, height, width, channels)
+            tensor_scaled = tensor.permute(0, 3, 1, 2)  # (batch, channels, height, width)
+            # 选择插值模式
+            mode_map = {
+                "LANCZOS": "bicubic",
+                "BILINEAR": "bilinear",
+                "BICUBIC": "bicubic",
+                "BOX": "nearest",
+                "HAMMING": "bilinear",
+                "NEAREST": "nearest"
+            }
+            interpolation_mode = mode_map.get(method, "bilinear")
+            tensor_scaled = torch.nn.functional.interpolate(
+                tensor_scaled,
+                size=(final_height, final_width),
+                mode=interpolation_mode,
+                align_corners=False if interpolation_mode != "nearest" else None
+            )
+            # 如果需要裁剪，进行居中裁剪
+            if crop_needed:
+                if crop_dim == "height":
+                    # 裁剪高度
+                    start_h = (final_height - crop_target) // 2
+                    tensor_scaled = tensor_scaled[:, :, start_h:start_h + crop_target, :]
+                else:  # crop_dim == "width"
+                    # 裁剪宽度
+                    start_w = (final_width - crop_target) // 2
+                    tensor_scaled = tensor_scaled[:, :, :, start_w:start_w + crop_target]
+            tensor_scaled = tensor_scaled.permute(0, 2, 3, 1)  # (batch, height, width, channels)
+        else:
+            # 遮罩张量 (batch, height, width)
+            tensor_scaled = tensor.unsqueeze(1)  # (batch, 1, height, width)
+            tensor_scaled = torch.nn.functional.interpolate(
+                tensor_scaled,
+                size=(final_height, final_width),
+                mode="bilinear",
+                align_corners=False
+            )
+            # 如果需要裁剪，进行居中裁剪
+            if crop_needed:
+                if crop_dim == "height":
+                    # 裁剪高度
+                    start_h = (final_height - crop_target) // 2
+                    tensor_scaled = tensor_scaled[:, :, start_h:start_h + crop_target, :]
+                else:  # crop_dim == "width"
+                    # 裁剪宽度
+                    start_w = (final_width - crop_target) // 2
+                    tensor_scaled = tensor_scaled[:, :, :, start_w:start_w + crop_target]
+
+            tensor_scaled = tensor_scaled.squeeze(1)  # (batch, height, width)
+        return tensor_scaled
+
 # ------------------Math------------------
 CATEGORY_NAME = "WJNode/Math"
 
@@ -1698,6 +1850,7 @@ NODE_CLASS_MAPPINGS = {
     "image_math": image_math,
     "image_math_value": image_math_value,
     "Robust_Imager_Merge": Robust_Imager_Merge,
+    "image_scale_pixel_v2": image_scale_pixel_v2,
     #WJNode/ImageMath
     "any_math": any_math,
     "any_math_v2": any_math_v2,
