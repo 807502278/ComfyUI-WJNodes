@@ -1,10 +1,12 @@
 from io import BytesIO
-# from xml.dom import minidom
 from copy import copy
 import os
-import json
-import math
+from math import gcd
+from functools import reduce
+
 import requests
+from tqdm import tqdm
+# from xml.dom import minidom
 
 import numpy as np
 from PIL import Image, ImageOps, ImageSequence, ImageFilter
@@ -275,6 +277,96 @@ class Save_Image_Out:
         file = f"{file_path}{filename}_{counter:05}_.png"
         return (images, file,)
         # return { "ui": { "images": results }, "IMAGE":image, "PATH":full_output_folder,}
+
+class image_url_download:
+    DESCRIPTION = """图像URL下载节点
+    输入说明：
+        image_urls:图像URL列表，或单个图像URL字符串
+        timeout_single:单个图像下载超时时间(秒)
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image_urls": (any,),
+                "timeout_single": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 3600.0, "step": 0.001}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "download_images"
+    CATEGORY = CATEGORY_NAME
+
+    def download_images(self, image_urls, timeout_single):
+        empty_image = torch.zeros((1, 512, 512, 3), dtype=torch.float32)
+        """下载图像并转换为ComfyUI格式的张量"""
+        if not image_urls:
+            print("Error: image URLs input is none !")
+            return (empty_image,)
+
+        if isinstance(image_urls, str):
+            image_urls = [image_urls]
+        if not isinstance(image_urls, list):
+            print("Error: image_urls input is not a list or string !")
+            return (empty_image,)
+        print(f"📥 Downloading {len(image_urls)} image(s) with {timeout_single}s timeout per image...")
+
+        images = []
+        Error_n = 0
+        for i, url in tqdm(enumerate(image_urls),):
+            try:
+                # 下载图像，使用用户指定的超时时间
+                response = requests.get(url, timeout=timeout_single)
+                response.raise_for_status()
+                image_bytes = BytesIO(response.content)
+                pil_image = Image.open(image_bytes)
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                image_array = np.array(pil_image, dtype=np.float32) / 255.0
+                images.append(image_array)
+                
+            except Exception as e:
+                #print(f"❌ Error downloading image {i+1}: {e}")
+                Error_n += 1
+                continue
+
+        if not images:
+            print("No images were successfully downloaded")
+            # 返回空的图像张量
+            return (empty_image,)
+
+        # 检查所有图像的尺寸，如果不同则调整为统一尺寸
+        if len(images) > 1:
+            print(f"✅ Successfully downloaded {len(images)} image")
+            if Error_n > 0:
+                print(f"❌ {Error_n} image(s) failed to download")
+            # 找到最大的高度和宽度
+            max_height = max(img.shape[0] for img in images)
+            max_width = max(img.shape[1] for img in images)
+
+            # 调整所有图像到相同尺寸
+            resized_images = []
+            for i, img in enumerate(images):
+                if img.shape[0] != max_height or img.shape[1] != max_width:
+                    # 使用PIL进行resize
+                    pil_img = Image.fromarray((img * 255).astype(np.uint8))
+                    pil_img = pil_img.resize((max_width, max_height), Image.Resampling.LANCZOS)
+                    resized_img = np.array(pil_img, dtype=np.float32) / 255.0
+                    resized_images.append(resized_img)
+                    print(f"Resized image {i+1} from {img.shape} to {resized_img.shape}")
+                else:
+                    resized_images.append(img)
+            images = resized_images
+
+        # 转换为torch张量，维度顺序为(批次，高，宽，通道)
+        images_tensor = torch.stack([torch.from_numpy(img) for img in images])
+        #print(f"Final tensor shape: {images_tensor.shape}, dtype: {images_tensor.dtype}")
+        #print(f"Batch size: {images_tensor.shape[0]} images")
+
+        return (images_tensor,)
+
 
 # ------------------image crop nodes------------------
 CATEGORY_NAME = "WJNode/ImageCrop"
@@ -1412,11 +1504,12 @@ class Robust_Imager_Merge:
 class image_scale_pixel_v2:
     DESCRIPTION = """
     图像按像素缩放
+    旨在自动缩放图像至wan视频所需大小，及控制总像素以避免oom
     输入说明：
-        TotalPixels：缩放后的总像素(接近),单位：百万像素
+        TotalPixels：缩放后的总像素(接近),单位：百万像素，
+                0.32对应伪720P视频，1对应720P视频，2对应1080P视频，8.3对应4K视频
         alignment：缩放后的宽度和高度将为alignment的倍数
-        size_mode：fill-填充/crop-裁剪
-        method：缩放方法
+                wan视频一般情况可为64的倍数，vace/i2v等需要为128的倍数
     输出说明：
         遮罩和图像各自缩放，尺寸互不影响
     """
@@ -1427,12 +1520,11 @@ class image_scale_pixel_v2:
             "required": {
                 "TotalPixels": ("FLOAT", {"max": 512.0, "min": 0.0001, "step": 0.0001,"default": "1.0"}),
                 "alignment": (["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024"], {"default": "32"}),
-                "size_mode": (["fill", "crop"], {"default": "fill"}),
-                "method": (["LANCZOS", "BILINEAR", "BICUBIC", "BOX", "HAMMING", "NEAREST"], {"default":"LANCZOS"}),
             },
             "optional": {
                 "images": ("IMAGE",),
                 "masks": ("MASK",),
+                "option": ("SO",), #新增输入设置
             }
         }
 
@@ -1441,22 +1533,49 @@ class image_scale_pixel_v2:
     FUNCTION = "scale_image"
     CATEGORY = CATEGORY_NAME
 
-    def scale_image(self, TotalPixels, alignment, size_mode, method, images=None, masks=None):
-        # 转换alignment为整数
-        alignment = int(alignment)
-        # 将百万像素转换为实际像素数
-        target_pixels = TotalPixels * 1000000
+    def scale_image(self, TotalPixels, alignment, images=None, masks=None, option=None):
+        # 初始化设置
+        option_dict = {"TotalPixels": TotalPixels, 
+                       "alignment": alignment, 
+                       "size_mode": "crop", 
+                       "crop_bbox_method_width": "center",
+                       "crop_bbox_method_hight": "center",
+                       "method": "LANCZOS",
+                       "scale":"original",
+                       "fill_color":"#ffffff",
+                       "round_width": "round",
+                       "round_hight": "round",
+                       "Enable_TotalPixels":True,
+                       }
+        # 更新设置
+        if option is not None:
+            option_dict.update(option)
+
+        # 获取参数
+        target_pixels = option_dict["TotalPixels"] * 1000000 # 将百万像素转换为实际像素数
+        alignment = int(option_dict["alignment"]) # 转换alignment对齐值为整数
+        size_mode = option_dict["size_mode"] # 缩放时的对齐方式
+        crop_bbox_method_width = option_dict["crop_bbox_method_width"] # size_mode为crop或bbox时的宽度对齐的坐标基准
+        crop_bbox_method_hight = option_dict["crop_bbox_method_hight"] # size_mode为crop或bbox的高度对齐的坐标基准
+        round_width = option_dict["round_width"] # size_mode为crop或bbox时的宽度数值的舍入方式(四舍五入/向上/向下)
+        round_hight = option_dict["round_hight"] # size_mode为crop或bbox时的高度数值的舍入方式(四舍五入/向上/向下)
+        method = option_dict["method"] # 图像缩放算法
+        scale = option_dict["scale"] # 图像/遮罩大小的比例字符串(宽:高)，如果为original则使用输入原始图像/遮罩的大小
+        fill_color = option_dict["fill_color"] # size_mode为bbox(扩展到对齐的大小)时的填充色
+        # 是否启用总像素限制，如果不启用则按原图像/遮罩裁剪到指定比例(如果为original则不裁剪)后对齐到alignment指定的参数(如果为1则不处理)
+        Enable_TotalPixels = option_dict["Enable_TotalPixels"]
+
         # 处理图像
         processed_images = None
         if images is not None:
-            processed_images = self._scale_tensor(images, target_pixels, alignment, size_mode, method, is_image=True)
+            processed_images = self._scale_tensor(images, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=True)
         # 处理遮罩
         processed_masks = None
         if masks is not None:
-            processed_masks = self._scale_tensor(masks, target_pixels, alignment, size_mode, method, is_image=False)
+            processed_masks = self._scale_tensor(masks, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=False)
         return (processed_images, processed_masks)
 
-    def _scale_tensor(self, tensor, target_pixels, alignment, size_mode, method, is_image=True):
+    def _scale_tensor(self, tensor, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=True):
         """缩放张量到目标像素数"""
         import math
         if tensor is None:
@@ -1465,14 +1584,71 @@ class image_scale_pixel_v2:
         original_height = tensor.shape[1]
         original_width = tensor.shape[2]
         original_pixels = original_height * original_width
-        # 1. 先计算按当前图像比例最接近指定总像素的尺寸wh
-        scale_factor = math.sqrt(target_pixels / original_pixels)
-        target_height = int(original_height * scale_factor)
-        target_width = int(original_width * scale_factor)
+
+        if Enable_TotalPixels:
+            # 启用总像素限制：按总像素数计算目标尺寸
+            # 1. 根据scale参数确定目标比例
+            if scale == "original":
+                # 使用输入图像的原始宽:高比例
+                target_ratio = original_width / original_height
+            else:
+                # 解析scale参数的比例字符串(宽:高)
+                try:
+                    width_ratio, height_ratio = map(float, scale.split(':'))
+                    target_ratio = width_ratio / height_ratio
+                except:
+                    # 如果解析失败，回退到原始比例
+                    target_ratio = original_width / original_height
+
+            # 1.1 根据target_pixels和目标比例计算目标尺寸
+            # target_pixels = target_width * target_height
+            # target_ratio = target_width / target_height
+            # 所以: target_height = sqrt(target_pixels / target_ratio)
+            #      target_width = target_height * target_ratio
+            target_height = int(math.sqrt(target_pixels / target_ratio))
+            target_width = int(target_height * target_ratio)
+        else:
+            # 不启用总像素限制：按原图像/遮罩裁剪到指定比例后对齐
+            if scale == "original":
+                # 如果为original则不裁剪，直接使用原始尺寸
+                target_width = original_width
+                target_height = original_height
+            else:
+                # 解析scale参数的比例字符串(宽:高)，按此比例裁剪原图像
+                try:
+                    width_ratio, height_ratio = map(float, scale.split(':'))
+                    target_ratio = width_ratio / height_ratio
+
+                    # 按比例裁剪：选择较小的缩放比例，确保完全包含
+                    if original_width / original_height > target_ratio:
+                        # 原图更宽，按高度计算
+                        target_height = original_height
+                        target_width = int(original_height * target_ratio)
+                    else:
+                        # 原图更高，按宽度计算
+                        target_width = original_width
+                        target_height = int(original_width / target_ratio)
+                except:
+                    # 如果解析失败，使用原始尺寸
+                    target_width = original_width
+                    target_height = original_height
         # 对齐到指定倍数
         if alignment > 1:
-            target_height = ((target_height + alignment - 1) // alignment) * alignment
-            target_width = ((target_width + alignment - 1) // alignment) * alignment
+            # 根据round_width选择宽度舍入方式
+            if round_width == "ceil":
+                target_width = ((target_width + alignment - 1) // alignment) * alignment
+            elif round_width == "floor":
+                target_width = (target_width // alignment) * alignment
+            else:  # round_width == "round"
+                target_width = round(target_width / alignment) * alignment
+
+            # 根据round_hight选择高度舍入方式
+            if round_hight == "ceil":
+                target_height = ((target_height + alignment - 1) // alignment) * alignment
+            elif round_hight == "floor":
+                target_height = (target_height // alignment) * alignment
+            else:  # round_hight == "round"
+                target_height = round(target_height / alignment) * alignment
         # 确保最小尺寸
         target_height = max(target_height, alignment)
         target_width = max(target_width, alignment)
@@ -1482,9 +1658,22 @@ class image_scale_pixel_v2:
             final_height = target_height
             final_width = target_width
             crop_needed = False
+            bbox_needed = False
+        elif size_mode == "bbox":
+            # bbox模式：等比缩放后外扩填充到目标尺寸
+            # 选择较小的缩放比例，确保图像完全包含在目标尺寸内
+            width_scale = target_width / original_width
+            height_scale = target_height / original_height
+            scale = min(width_scale, height_scale)
+
+            final_width = int(original_width * scale)
+            final_height = int(original_height * scale)
+            crop_needed = False
+            bbox_needed = True
         else:  # size_mode == "crop"
             # 裁剪模式：等比缩放后裁剪
             crop_needed = True
+            bbox_needed = False
             # 3.1: 按宽度对齐到目标宽度等比缩放
             width_scale = target_width / original_width
             scaled_height_by_width = int(original_height * width_scale)
@@ -1527,16 +1716,64 @@ class image_scale_pixel_v2:
                 mode=interpolation_mode,
                 align_corners=False if interpolation_mode != "nearest" else None
             )
-            # 如果需要裁剪，进行居中裁剪
+            # 如果需要裁剪，根据crop_bbox_method进行裁剪
             if crop_needed:
                 if crop_dim == "height":
-                    # 裁剪高度
-                    start_h = (final_height - crop_target) // 2
+                    # 裁剪高度，根据crop_bbox_method_hight确定起始位置
+                    if crop_bbox_method_hight == "up":
+                        start_h = 0
+                    elif crop_bbox_method_hight == "down":
+                        start_h = final_height - crop_target
+                    else:  # center
+                        start_h = (final_height - crop_target) // 2
                     tensor_scaled = tensor_scaled[:, :, start_h:start_h + crop_target, :]
                 else:  # crop_dim == "width"
-                    # 裁剪宽度
-                    start_w = (final_width - crop_target) // 2
+                    # 裁剪宽度，根据crop_bbox_method_width确定起始位置
+                    if crop_bbox_method_width == "left":
+                        start_w = 0
+                    elif crop_bbox_method_width == "right":
+                        start_w = final_width - crop_target
+                    else:  # center
+                        start_w = (final_width - crop_target) // 2
                     tensor_scaled = tensor_scaled[:, :, :, start_w:start_w + crop_target]
+
+            # 如果需要bbox填充，进行外扩填充
+            if bbox_needed:
+                # 解析fill_color
+                try:
+                    fill_color_hex = fill_color.lstrip('#')
+                    r = int(fill_color_hex[0:2], 16) / 255.0
+                    g = int(fill_color_hex[2:4], 16) / 255.0
+                    b = int(fill_color_hex[4:6], 16) / 255.0
+                    fill_rgb = [r, g, b]
+                except:
+                    fill_rgb = [1.0, 1.0, 1.0]  # 默认白色
+
+                # 创建目标尺寸的画布
+                batch_size = tensor_scaled.shape[0]
+                canvas = torch.full((batch_size, 3, target_height, target_width), 0.0, dtype=tensor_scaled.dtype, device=tensor_scaled.device)
+                for i in range(3):
+                    canvas[:, i, :, :] = fill_rgb[i]
+
+                # 计算放置位置
+                if crop_bbox_method_width == "left":
+                    start_w = 0
+                elif crop_bbox_method_width == "right":
+                    start_w = target_width - final_width
+                else:  # center
+                    start_w = (target_width - final_width) // 2
+
+                if crop_bbox_method_hight == "up":
+                    start_h = 0
+                elif crop_bbox_method_hight == "down":
+                    start_h = target_height - final_height
+                else:  # center
+                    start_h = (target_height - final_height) // 2
+
+                # 将缩放后的图像放置到画布上
+                canvas[:, :, start_h:start_h + final_height, start_w:start_w + final_width] = tensor_scaled
+                tensor_scaled = canvas
+
             tensor_scaled = tensor_scaled.permute(0, 2, 3, 1)  # (batch, height, width, channels)
         else:
             # 遮罩张量 (batch, height, width)
@@ -1547,19 +1784,121 @@ class image_scale_pixel_v2:
                 mode="bilinear",
                 align_corners=False
             )
-            # 如果需要裁剪，进行居中裁剪
+            # 如果需要裁剪，根据crop_bbox_method进行裁剪
             if crop_needed:
                 if crop_dim == "height":
-                    # 裁剪高度
-                    start_h = (final_height - crop_target) // 2
+                    # 裁剪高度，根据crop_bbox_method_hight确定起始位置
+                    if crop_bbox_method_hight == "up":
+                        start_h = 0
+                    elif crop_bbox_method_hight == "down":
+                        start_h = final_height - crop_target
+                    else:  # center
+                        start_h = (final_height - crop_target) // 2
                     tensor_scaled = tensor_scaled[:, :, start_h:start_h + crop_target, :]
                 else:  # crop_dim == "width"
-                    # 裁剪宽度
-                    start_w = (final_width - crop_target) // 2
+                    # 裁剪宽度，根据crop_bbox_method_width确定起始位置
+                    if crop_bbox_method_width == "left":
+                        start_w = 0
+                    elif crop_bbox_method_width == "right":
+                        start_w = final_width - crop_target
+                    else:  # center
+                        start_w = (final_width - crop_target) // 2
                     tensor_scaled = tensor_scaled[:, :, :, start_w:start_w + crop_target]
+
+            # 如果需要bbox填充，进行外扩填充
+            if bbox_needed:
+                # 创建目标尺寸的画布，遮罩用0填充（黑色）
+                batch_size = tensor_scaled.shape[0]
+                canvas = torch.zeros((batch_size, 1, target_height, target_width), dtype=tensor_scaled.dtype, device=tensor_scaled.device)
+
+                # 计算放置位置
+                if crop_bbox_method_width == "left":
+                    start_w = 0
+                elif crop_bbox_method_width == "right":
+                    start_w = target_width - final_width
+                else:  # center
+                    start_w = (target_width - final_width) // 2
+
+                if crop_bbox_method_hight == "up":
+                    start_h = 0
+                elif crop_bbox_method_hight == "down":
+                    start_h = target_height - final_height
+                else:  # center
+                    start_h = (target_height - final_height) // 2
+
+                # 将缩放后的遮罩放置到画布上
+                canvas[:, :, start_h:start_h + final_height, start_w:start_w + final_width] = tensor_scaled
+                tensor_scaled = canvas
 
             tensor_scaled = tensor_scaled.squeeze(1)  # (batch, height, width)
         return tensor_scaled
+
+class image_scale_pixel_option:
+    DESCRIPTION = """
+    图像按像素缩放的高级选项
+        默认参数将和image_scale_pixel_v2节点不输入设置时保持一致
+    """
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "scale": (["original", "1:1", "3:4", "4:3", "9:16", "16:9"], {"default": "original"}),
+                "size_mode": (["fill", "crop","bbox"], {"default": "fill"}),
+                "crop_bbox_method_width": (["center", "left", "right"], {"default": "center"}),
+                "crop_bbox_method_hight": (["center", "up", "down"], {"default": "center"}),
+                "fill_color":("STRING",{"default":"#ffffff"}),
+                "round_width": (["round", "ceil", "floor"], {"default": "round"}),
+                "round_hight": (["round", "ceil", "floor"], {"default": "round"}),
+                "method": (["LANCZOS", "BILINEAR", "BICUBIC", "BOX", "HAMMING", "NEAREST"], {"default":"LANCZOS"}),
+                "Enable_TotalPixels":("BOOLEAN",{"default":True}),
+            },
+            "optional": {
+                "refer_to":(any,),
+            }
+        }
+
+    RETURN_TYPES = ("SO",)
+    RETURN_NAMES = ("scale_pixel_option")
+    FUNCTION = "scale_image"
+    CATEGORY = CATEGORY_NAME
+
+    def scale_image(self, scale, size_mode, crop_bbox_method_width, crop_bbox_method_hight, fill_color, round_width, round_hight, method, Enable_TotalPixels, refer_to=None):
+        original_size = scale
+        if refer_to is not None :
+            # 检测refer_to的类型
+            if isinstance(refer_to, torch.Tensor):
+                # 检测到为图像类
+                original_size = self._cast_to_str(refer_to.shape[1:3])
+            elif isinstance(refer_to, dict):
+                # 检测是否为latent
+                if "samples" in refer_to and isinstance(refer_to["samples"], torch.Tensor):
+                    if "type" in refer_to and refer_to["type"] == "audio":
+                        print("Warning: The refer_to input is a audio-latent, Cannot obtain aspect ratio, reference input will be ignored")
+                    elif refer_to["samples"].dim() == 4:
+                        original_size = self._cast_to_str(refer_to["samples"].shape[2:4])
+                    else:
+                        print("Warning: The refer_to input is unknown samples data , Cannot obtain aspect ratio, reference input will be ignored")
+                else:
+                    print("Warning1: The refer_to input is not a image/mask/image-latent, please check your input")
+            else:
+                print("Warning0: The refer_to input is not a image/mask/image-latent, please check your input")
+        return ({"scale": original_size,
+                 "size_mode": size_mode,
+                 "crop_bbox_method_width": crop_bbox_method_width,
+                 "crop_bbox_method_hight": crop_bbox_method_hight,
+                 "fill_color": fill_color,
+                 "round_width": round_width,
+                 "round_hight": round_hight,
+                 "method": method,
+                 "Enable_TotalPixels": Enable_TotalPixels,
+                 },)
+    
+    # 输出约分后的比例
+    def _cast_to_str(self, data):
+        data = np.array(data)
+        h,w = (data/reduce(gcd, data.tolist())).astype(int)
+        return str(w)+":"+str(h)
+
 
 # ------------------Math------------------
 CATEGORY_NAME = "WJNode/Math"
@@ -1841,6 +2180,7 @@ NODE_CLASS_MAPPINGS = {
     "Save_Image_To_Path": Save_Image_To_Path,
     "Save_Image_Out": Save_Image_Out,
     "Load_Image_Adv": Load_Image_Adv,
+    "image_url_download": image_url_download,
     #WJNode/ImageCrop
     "adv_crop": adv_crop,
     #WJNode/ImageEdit
@@ -1851,6 +2191,7 @@ NODE_CLASS_MAPPINGS = {
     "image_math_value": image_math_value,
     "Robust_Imager_Merge": Robust_Imager_Merge,
     "image_scale_pixel_v2": image_scale_pixel_v2,
+    "image_scale_pixel_option": image_scale_pixel_option,
     #WJNode/ImageMath
     "any_math": any_math,
     "any_math_v2": any_math_v2,
