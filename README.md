@@ -2,7 +2,6 @@
 **ComfyUI-WJNodes**
 - This is a simple node package that I use myself. If there are new functions or suggestions, please provide feedback.
 - If you want to use modified versions of other nodes, you need to install their corresponding dependencies
-- The delfile node is not recommended for use on servers. To disable the delfile node, change the 'DelFile=True' of node/file.py to 'DelFile=False'
 
 **Node list:**
 
@@ -11,8 +10,7 @@
   - ✅`Save_Image_To_Path` : Save image by overwriting the path
   - ✅`Save_Image_Out` : Save image to output and output the path
   - ✅`Load_Image_Adv` : Load image with mask inversion and path output, supports multiple formats (jpg, png, jpeg, webp, tiff, bmp, gif, ico, svg)
-- ImageCrop: WJNode/ImageCrop
-  - ✅`adv_crop` : Advanced cropping: can quickly crop/expand/move/flip images, can output background masks and custom filling
+  - ✅`image_url_download` : Download images from URLs with configurable timeout, supports batch processing
 - ImageEdit: WJNode/ImageEdit
   - ✅`invert_channel_adv` : Invert/separate image channels, RGBA to mask batch, replace channels, any channel to RGBA
   - ✅`ListMerger` : Merge multiple image lists into a single batch
@@ -20,6 +18,24 @@
   - ✅`image_math` : Image mathematical operations with expression support
   - ✅`image_math_value` : Image and value mathematical calculations
   - ✅`Robust_Imager_Merge` : Advanced image merging with robust handling
+  - ✅`image_scale_pixel_v2` : Advanced image scaling by total pixels with alignment, cropping, and bbox filling options
+  - ✅`image_scale_pixel_option` : Generate advanced options for image_scale_pixel_v2 node
+- Crop: WJNode/ImageEdit/image_crop
+  - ✅`adv_crop` : Advanced cropping: can quickly crop/expand/move/flip images, can output background masks and custom filling
+  - ✅`Accurate_mask_clipping` : Accurately find mask boundaries and optionally crop to those boundaries
+  - ✅`crop_by_bboxs` : Crop images using bounding box data
+- Mask Crop: WJNode/ImageEdit/mask_crop
+  - ✅`mask_crop_square` : Square cropping based on mask data
+  - ✅`mask_crop_option_SmoothCrop` : Smooth cropping with advanced options
+  - ✅`mask_crop_option_Basic` : Basic mask cropping options
+  - ✅`crop_data_edit` : Edit and modify crop data
+  - ✅`crop_data_CoordinateSmooth` : Coordinate smoothing for crop data
+- Mask Editing: WJNode/ImageEdit/MaskEdit
+  - ✅`mask_select_mask` : Mask selection within a mask batch (intersection represents selection)
+  - 🟩`coords_select_mask` : Coordinate selection of masks, used to assist SAM2 video keying (under development)
+  - ✅`mask_line_mapping` : Mask line mapping, can automatically calculate maximum and minimum values when input is -1 or 256
+  - ✅`mask_and_mask_math` : Mask to mask operations, supports addition/subtraction/intersection/multiplication operations, \
+                  Adjustable cv2 and torch modes, if cv2 is not installed, automatically switches to torch
 - Math: WJNode/Math
   - ✅`any_math` : Any data calculation, supports pure data input such as images/values/arrays, and outputs images or any data type
   - ✅`any_math_v2` : Support arbitrary data calculation with more inputs and 3 sets of outputs
@@ -36,21 +52,6 @@
   - ✅`load_ColorName_config` : Load color name configuration
   - ✅`Color_check_Name` : Check color names and filter color data
   - ✅`Color_Data_Break` : Break down color data into components
-- Mask Editing: WJNode/MaskEdit
-  - ✅`mask_select_mask` : Mask selection within a mask batch (intersection represents selection)
-  - 🟩`coords_select_mask` : Coordinate selection of masks, used to assist SAM2 video keying (under development)
-  - ✅`mask_line_mapping` : Mask line mapping, can automatically calculate maximum and minimum values when input is -1 or 256
-  - ✅`mask_and_mask_math` : Mask to mask operations, supports addition/subtraction/intersection/multiplication operations, \
-                  Adjustable cv2 and torch modes, if cv2 is not installed, automatically switches to torch
-- Crop: WJNode/crop
-  - ✅`Accurate_mask_clipping` : Accurately find mask boundaries and optionally crop to those boundaries
-  - ✅`crop_by_bboxs` : Crop images using bounding box data
-- Mask Crop: WJNode/crop/mask_crop
-  - ✅`mask_crop_square` : Square cropping based on mask data
-  - ✅`mask_crop_option_SmoothCrop` : Smooth cropping with advanced options
-  - ✅`mask_crop_option_Basic` : Basic mask cropping options
-  - ✅`crop_data_edit` : Edit and modify crop data
-  - ✅`crop_data_CoordinateSmooth` : Coordinate smoothing for crop data
 - Video Merge: WJNode/video/merge
   - ✅`Video_fade` : Two video segments can choose two ways to fade in and out
   - ✅`SaveMP4` : Save single video as MP4 format
@@ -62,7 +63,8 @@
 - GetData: WJNode/GetData
   - ✅`Mask_Detection` : Mask detection: detect whether there is a mask, detect whether it is all hard edges, \
                   detect whether the mask is pure white/pure black/pure gray and output values 0-255
-  - ✅`get_image_data` : Obtain basic data from images/masks (batch/width/height/maximum value)
+  - ✅`get_image_data` : Obtain image size data from images/masks (batch/width/height/channels/shape)
+  - ✅`get_image_ratio` : Obtain image aspect ratio data (max/min dimensions, ratio float/string, ratio classification)
 - Other Functions: WJNode/Other-functions
   - ✅`Any_Pipe` : Group any data, known bug: nested grouping will split
   - ✅`Determine_Type` : Display data type and determine data characteristics
