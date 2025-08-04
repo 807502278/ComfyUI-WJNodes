@@ -9,7 +9,7 @@ from tqdm import tqdm
 # from xml.dom import minidom
 
 import numpy as np
-from PIL import Image, ImageOps, ImageSequence, ImageFilter
+from PIL import Image, ImageOps, ImageSequence
 import torch
 import torch.nn.functional as F
 
@@ -366,231 +366,6 @@ class image_url_download:
         #print(f"Batch size: {images_tensor.shape[0]} images")
 
         return (images_tensor,)
-
-
-# ------------------image crop nodes------------------
-CATEGORY_NAME = "WJNode/ImageCrop"
-
-class adv_crop:
-    DESCRIPTION = """
-    Advanced Crop Node-20241009
-        1. Expand and crop (cropping when negative numbers are input) the image or mask up, down, left, and right (can be processed separately or simultaneously).
-        2. Synchronously crop the input mask (can be inconsistent with the image resolution).
-        3. Adjustable fill color (black/white, white by default), or fill the original image with reflect, circular, or replicate for edge extension.
-        4. Output the background mask after the image is expanded (if the background mask of the output mask is required, no image can be input).
-
-        5. If you want to customize the background color or texture, please use the background mask to blend by yourself.
-        6. Method for moving an image: Simultaneously expand and crop in one direction (input negative number + positive number).
-        7. Note that cropping should not exceed the boundary (especially when the resolution of the mask is different from that of the image), otherwise an error will be reported.
-
-    高级裁剪节点-20241009
-        1:上下左右扩展&裁剪(输入负数时为裁剪)图像或遮罩(可单独或同时处理)
-        2:同步裁剪输入遮罩(与图像分辨率可以不一致)
-        3:可调整填充色(黑/白，默认白色),或填充原图reflect,circular,或边缘扩展replicate
-        4:输出图像扩展后的背景遮罩(若需输出遮罩的背景遮罩，则不能输入图像)
-
-        5:自定义背景/纹理：请使用背景遮罩自行混合
-        6:移动图片的方法：在一个方向上同时扩展和裁剪(输入负数+正数)
-        7:注意裁剪不要超过边界(特别是遮罩与图像的分辨率不一样时)，否则会报错
-    """
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "up": ("INT", {"default": 0, "min": -32768, "max": 32767}),
-                "down": ("INT", {"default": 0, "min": -32768, "max": 32767}),
-                "left": ("INT", {"default": 0, "min": -32768, "max": 32767}),
-                "right": ("INT", {"default": 0, "min": -32768, "max": 32767}),
-                "Background": (["White", "Black", "Mirror", "Tile", "Extend"],),
-                "InvertValue": ("BOOLEAN", {"default": False}),
-                "InvertMask": ("BOOLEAN", {"default": False}),
-                "InvertBackMask": ("BOOLEAN", {"default": False})
-            },
-            "optional": {
-                "image": ("IMAGE",),
-                "mask": ("MASK",),
-            },
-        }
-    CATEGORY = CATEGORY_NAME
-    RETURN_TYPES = ("IMAGE", "MASK", "MASK")
-    RETURN_NAMES = ("image", "mask", "back_mask")
-    FUNCTION = "adv_crop"
-
-    def adv_crop(self, up, down, left, right, Background, InvertMask, InvertBackMask, InvertValue, image=None, mask=None):
-        Background_mapping = {
-            "White": "White",
-            "Black": "Black",
-            "Mirror": "reflect",
-            "Tile": "circular",
-            "Extend": "replicate"
-        }
-        # Map fill method names to function parameters 将填充方式名称映射到函数参数
-        Background = Background_mapping[Background]
-
-        if InvertValue:
-            up = -up
-            down = -down
-            left = -left
-            right = -right
-
-        crop_data = np.array([left, right, up, down])
-        back_mask = None
-
-        if image is not None:
-            image_data = self.get_image_data(image)
-            n, h, w, c, *p = image_data
-            extend_separate, crop_separate = self.process_crop_data(
-                crop_data, h, w)
-            image, back_mask = self.data_processing(
-                crop_separate, extend_separate, image_data, back_mask, Background)
-            if len(list(image.shape)) == 4 and InvertMask:
-                image[..., 3] = 1-image[..., 3]
-
-        if mask is not None:  # 单独处理遮罩与图像，可同时裁剪不同分辨率不同批次的遮罩与图像
-            image_data = self.get_image_data(mask)
-            n, h, w, *p = image_data
-            extend_separate, crop_separate = self.process_crop_data(
-                crop_data, h, w)
-            mask, back_mask = self.data_processing(
-                crop_separate, extend_separate, image_data, back_mask, Background)
-            if InvertMask:
-                mask = 1.0 - mask
-        if InvertBackMask and back_mask is not None:
-            back_mask = 1.0 - back_mask
-        return (image, mask, back_mask)
-
-    def data_processing(self, crop_data, extend_data, image_data, back_mask, Background):
-        # Obtain image data 获取图像数据
-        n, h, w, c, dim, image = image_data
-
-        # Expand the image and mask 扩展背景遮罩
-        back_mask_run = False
-        if back_mask is None:
-            back_mask_run = True
-            back_mask = torch.ones(
-                (n, h, w), dtype=torch.float32, device=image.device)
-            back_mask = torch.nn.functional.pad(
-                back_mask, tuple(extend_data), mode='constant', value=0.0)
-
-        # Expand the image and mask 扩展图像和背景遮罩
-            # Filling method during expansion 扩展时的图像填充方式
-        fill_color = 1.0
-        if Background == "White":
-            Background = "constant"
-        elif Background == "Black":
-            Background = "constant"
-            fill_color = 0.0
-
-            # Extended data varies depending on the image or mask
-            # 扩展数据因图像或遮罩而异
-        if dim == 4:
-            extend_data = tuple(np.concatenate(
-                (np.array([0, 0]), extend_data)))
-        else:
-            extend_data = tuple(extend_data)
-
-            # run Expand the image and mask 运行扩展图像和背景遮罩
-        if Background == "constant":
-            image = torch.nn.functional.pad(
-                image, extend_data, mode=Background, value=fill_color)
-            print(f"avd_crop:expand image {extend_data} to color")
-        else:
-            image = torch.nn.functional.pad(
-                image, extend_data, mode=Background)
-            print(f"avd_crop:expand image {extend_data} to fill")
-
-        # Crop the image and mask 裁剪图像和背景遮罩
-        if dim == 4:
-            print("avd_crop:crop image")
-            n, h, w, c = image.shape
-            image = image[:,
-                          crop_data[2]:h-crop_data[3],
-                          crop_data[0]:w-crop_data[1],
-                          :]
-        else:
-            print("avd_crop:crop mask")
-            n, h, w = image.shape
-            image = image[:,
-                          crop_data[2]:h-crop_data[3],
-                          crop_data[0]:w-crop_data[1]
-                          ]
-        if back_mask_run:
-            print("avd_crop:crop back_mask")
-            back_mask = back_mask[:,
-                                  crop_data[2]:h-crop_data[3],
-                                  crop_data[0]:w-crop_data[1]
-                                  ]
-        return [image, back_mask]
-
-    # Obtaining and standardizing image data 获取并标准化图像数据
-    def get_image_data(self, image):
-        shape = image.shape
-        dim = image.dim()
-        n, h, w, c = 1, 1, 1, 1
-        if dim == 4:
-            n, h, w, c = shape
-            if c == 1:  # When the last dimension is a single channel, it should be a mask 最后一维为单通道时应为遮罩
-                image = image.squeeze(3)
-                dim = 3
-                print(f"""avd_crop warning: Due to the input not being a standard image tensor,
-                      it has been detected that it may be a mask.
-                      We are currently converting {shape} to {image.shape} for processing""")
-            elif h == 1 and (w != 1 or c != 1):  # When the second dimension is a single channel, it should be a mask 第2维为单通道时应为遮罩
-                image = image.squeeze(1)
-                dim = 3
-                print(f"""avd_crop warning: Due to the input not being a standard image/mask tensor,
-                      it has been detected that it may be a mask.
-                      We are currently converting {shape} to {image.shape} for processing""")
-            else:
-                print(f"avd_crop:Processing standard images:{shape}")
-        elif dim == 3:
-            n, h, w = shape
-            print(f"avd_crop:Processing standard mask:{shape}")
-        elif dim == 5:
-            n, c, c1, h, w = shape
-            if c == 1 and c1 == 1:  # The mask batch generated by the was plugin may have this issue WAS插件生成的mask批次可能会有此问题
-                image = image.squeeze(1)
-                # Remove unnecessary dimensions from mask batch 移除mask批次多余的维度
-                image = image.squeeze(1)
-                dim = 3
-                print(f"""avd_crop warning: Due to the input not being a standard mask tensor,
-                      it has been detected that it may be a mask.
-                      We are currently converting {shape} to {image.shape} for processing""")
-        else:  # The image dimension is incorrect 图像维度不正确
-            raise ValueError(
-                f"avd_crop Error: The shape of the input image or mask data is incorrect, requiring image n, h, w, c mask n, h, w \nWhat was obtained is{shape}")
-        return [n, h, w, c, dim, image]
-
-    # Separate cropped data into cropped and expanded data 将裁剪数据分离为裁剪和扩展数据
-    def process_crop_data(self, crop_data, h, w):
-        shape_hw = np.array([h, h, w, w])
-        crop_n = crop_data.shape[0]
-
-        # Set the crops_data value that exceeds the boundary on one side to the boundary value of -1
-        # 将单边超出边界的crop_data值设为边界值-1
-        for i in range(crop_n):
-            if crop_data[i] >= h:
-                crop_data[i] = shape_hw[i]-1
-
-        # Determine whether the total height exceeds the boundary 判断总高度是否超出边界
-        if crop_data[0]+crop_data[1] >= h:
-            raise ValueError(
-                f"avd_crop Error:The height {crop_data[0]+crop_data[1]} of the cropped area exceeds the size of image {h}")
-        # Determine whether the total width exceeds the boundary 判断总宽度是否超出边界
-        elif crop_data[2]+crop_data[3] >= w:
-            raise ValueError(
-                f"avd_crop Error:The width {crop_data[2]+crop_data[3]} of the cropped area exceeds the size of image {w}")
-
-        # Separate into cropped and expanded data 分离为裁剪和扩展数据
-        extend_separate = np.array([0, 0, 0, 0])
-        corp_separate = np.copy(extend_separate)
-        for i in range(crop_n):
-            if crop_data[i] < 0:
-                extend_separate[i] = abs(crop_data[i])
-            else:
-                corp_separate[i] = crop_data[i]
-        return [extend_separate, corp_separate]
 
 # ------------------image edit nodes------------------
 CATEGORY_NAME = "WJNode/ImageEdit"
@@ -1899,7 +1674,6 @@ class image_scale_pixel_option:
         h,w = (data/reduce(gcd, data.tolist())).astype(int)
         return str(w)+":"+str(h)
 
-
 # ------------------Math------------------
 CATEGORY_NAME = "WJNode/Math"
 
@@ -2181,8 +1955,6 @@ NODE_CLASS_MAPPINGS = {
     "Save_Image_Out": Save_Image_Out,
     "Load_Image_Adv": Load_Image_Adv,
     "image_url_download": image_url_download,
-    #WJNode/ImageCrop
-    "adv_crop": adv_crop,
     #WJNode/ImageEdit
     "invert_channel_adv": invert_channel_adv,
     "ListMerger": ListMerger,

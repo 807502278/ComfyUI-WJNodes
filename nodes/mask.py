@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-CATEGORY_NAME = "WJNode/MaskEdit"
+CATEGORY_NAME = "WJNode/ImageEdit/MaskEdit"
 
 
 class mask_select_mask:
