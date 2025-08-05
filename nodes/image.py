@@ -3,6 +3,7 @@ from copy import copy
 import os
 from math import gcd
 from functools import reduce
+import re
 
 import requests
 from tqdm import tqdm
@@ -992,8 +993,8 @@ class Robust_Imager_Merge:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("image", "mask")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
+    RETURN_NAMES = ("image", "mask", "width", "height")
     FUNCTION = "merge_images"
     CATEGORY = CATEGORY_NAME
 
@@ -1281,7 +1282,7 @@ class image_scale_pixel_v2:
     图像按像素缩放
     旨在自动缩放图像至wan视频所需大小，及控制总像素以避免oom
     输入说明：
-        TotalPixels：缩放后的总像素(接近),单位：百万像素，
+        TotalPixels：缩放后的总像素(接近),单位：百万像素(10进制结果)，
                 0.32对应伪720P视频，1对应720P视频，2对应1080P视频，8.3对应4K视频
         alignment：缩放后的宽度和高度将为alignment的倍数
                 wan视频一般情况可为64的倍数，vace/i2v等需要为128的倍数
@@ -1293,8 +1294,9 @@ class image_scale_pixel_v2:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "TotalPixels": ("FLOAT", {"max": 512.0, "min": 0.0001, "step": 0.0001,"default": "1.0"}),
-                "alignment": (["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024"], {"default": "32"}),
+                "TotalPixels": ("FLOAT", {"max": 1024.0, "min": 0.0001, "step": 0.0001,"default": 1.0486}),
+                "alignment": (["1(No restrictions)", "2", "4", "8", "16", "32", "64(sd/kontext/wan)", "128(wan-vace/wan-i2v)", "256", "512", "1024"], 
+                               {"default": "64(sd/kontext/wan)"}),
             },
             "optional": {
                 "images": ("IMAGE",),
@@ -1303,8 +1305,8 @@ class image_scale_pixel_v2:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("image", "mask")
+    RETURN_TYPES = ("IMAGE", "MASK","INT","INT")
+    RETURN_NAMES = ("image", "mask", "width", "height")
     FUNCTION = "scale_image"
     CATEGORY = CATEGORY_NAME
 
@@ -1321,6 +1323,7 @@ class image_scale_pixel_v2:
                        "round_width": "round",
                        "round_hight": "round",
                        "Enable_TotalPixels":True,
+                       "any_alignment":0,
                        }
         # 更新设置
         if option is not None:
@@ -1328,7 +1331,7 @@ class image_scale_pixel_v2:
 
         # 获取参数
         target_pixels = option_dict["TotalPixels"] * 1000000 # 将百万像素转换为实际像素数
-        alignment = int(option_dict["alignment"]) # 转换alignment对齐值为整数
+        alignment = int(re.sub(r'\([^)]*\)', '', option_dict["alignment"])) # 转换alignment对齐值为整数
         size_mode = option_dict["size_mode"] # 缩放时的对齐方式
         crop_bbox_method_width = option_dict["crop_bbox_method_width"] # size_mode为crop或bbox时的宽度对齐的坐标基准
         crop_bbox_method_hight = option_dict["crop_bbox_method_hight"] # size_mode为crop或bbox的高度对齐的坐标基准
@@ -1339,6 +1342,10 @@ class image_scale_pixel_v2:
         fill_color = option_dict["fill_color"] # size_mode为bbox(扩展到对齐的大小)时的填充色
         # 是否启用总像素限制，如果不启用则按原图像/遮罩裁剪到指定比例(如果为original则不裁剪)后对齐到alignment指定的参数(如果为1则不处理)
         Enable_TotalPixels = option_dict["Enable_TotalPixels"]
+        any_alignment = option_dict["any_alignment"] # 其值将覆盖alignment，用于任意整数的对齐，0表示不启用
+
+        if any_alignment != 0:
+            alignment = any_alignment
 
         # 处理图像
         processed_images = None
@@ -1348,7 +1355,65 @@ class image_scale_pixel_v2:
         processed_masks = None
         if masks is not None:
             processed_masks = self._scale_tensor(masks, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=False)
-        return (processed_images, processed_masks)
+
+        # 计算输出的宽高
+        output_width = 0
+        output_height = 0
+
+        if processed_images is not None:
+            # 1.1: 如果images有输入，则输出images的宽高
+            output_height = processed_images.shape[1]
+            output_width = processed_images.shape[2]
+        elif processed_masks is not None:
+            # 1.2: 否则如果masks有输入，则输出masks的宽高
+            output_height = processed_masks.shape[1]
+            output_width = processed_masks.shape[2]
+        else:
+            # 1.3: 如果没有任何图像/遮罩输入，则输出按option_dict参数计算出的尺寸
+            try:
+                # 模拟计算目标尺寸
+                if Enable_TotalPixels:
+                    if scale == "original":
+                        raise ValueError("Cannot calculate size without input images/masks when scale is 'original'")
+
+                    # 解析scale参数的比例字符串(宽:高)
+                    width_ratio, height_ratio = map(float, scale.split(':'))
+                    target_ratio = width_ratio / height_ratio
+
+                    # 根据target_pixels和目标比例计算目标尺寸
+                    import math
+                    target_height = int(math.sqrt(target_pixels / target_ratio))
+                    target_width = int(target_height * target_ratio)
+
+                    # 对齐处理
+                    if alignment > 1:
+                        if round_width == "ceil":
+                            target_width = ((target_width + alignment - 1) // alignment) * alignment
+                        elif round_width == "floor":
+                            target_width = (target_width // alignment) * alignment
+                        else:  # round
+                            target_width = round(target_width / alignment) * alignment
+
+                        if round_hight == "ceil":
+                            target_height = ((target_height + alignment - 1) // alignment) * alignment
+                        elif round_hight == "floor":
+                            target_height = (target_height // alignment) * alignment
+                        else:  # round
+                            target_height = round(target_height / alignment) * alignment
+
+                    target_height = max(target_height, alignment)
+                    target_width = max(target_width, alignment)
+
+                    output_width = target_width
+                    output_height = target_height
+                else:
+                    raise ValueError("Cannot calculate size without input images/masks when Enable_TotalPixels is False")
+
+            except Exception as e:
+                # 1.4: 如果无法计算出合法的尺寸，直接报错
+                raise ValueError(f"Cannot calculate valid dimensions from option parameters: {str(e)}")
+
+        return (processed_images, processed_masks, output_width, output_height)
 
     def _scale_tensor(self, tensor, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=True):
         """缩放张量到目标像素数"""
@@ -1612,13 +1677,27 @@ class image_scale_pixel_option:
     DESCRIPTION = """
     图像按像素缩放的高级选项
         默认参数将和image_scale_pixel_v2节点不输入设置时保持一致
+        输入说明：
+            refer_to：参考其它image/mask/latent的大小，如果此处输入则会覆盖scale参数
+            scale：图像/遮罩大小的比例字符串(宽:高)，如果为original则使用输入原始图像/遮罩的宽高比例
+            size_mode：缩放时的对齐方式，有填充/裁剪/扩展到指定比例
+            crop_bbox_method_width：size_mode为crop或bbox时的宽度对齐的坐标基准
+            crop_bbox_method_hight：size_mode为crop或bbox时的高度对齐的坐标基准
+            fill_color：size_mode为bbox(扩展到对齐的大小)时的填充色，默认白色 #ffffff
+            round_width：size_mode为crop或bbox时的宽度数值的舍入方式(四舍五入/向上/向下)
+            round_hight：size_mode为crop或bbox时的高度数值的舍入方式(四舍五入/向上/向下)
+            method：图像缩放算法
+            Enable_TotalPixels：是否启用总像素限制，默认启用，
+                若不启用则按原图像/遮罩裁剪到指定比例(如果为original则不裁剪)后，
+                对齐到alignment指定的参数(如果为1则不处理)
+            any_alignment：其值将覆盖alignment，用于任意整数的对齐，0表示不覆盖(默认)
     """
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "scale": (["original", "1:1", "3:4", "4:3", "9:16", "16:9"], {"default": "original"}),
-                "size_mode": (["fill", "crop","bbox"], {"default": "fill"}),
+                "size_mode": (["fill", "crop","bbox"], {"default": "crop"}),
                 "crop_bbox_method_width": (["center", "left", "right"], {"default": "center"}),
                 "crop_bbox_method_hight": (["center", "up", "down"], {"default": "center"}),
                 "fill_color":("STRING",{"default":"#ffffff"}),
@@ -1626,6 +1705,7 @@ class image_scale_pixel_option:
                 "round_hight": (["round", "ceil", "floor"], {"default": "round"}),
                 "method": (["LANCZOS", "BILINEAR", "BICUBIC", "BOX", "HAMMING", "NEAREST"], {"default":"LANCZOS"}),
                 "Enable_TotalPixels":("BOOLEAN",{"default":True}),
+                "any_alignment":("INT",{"max":8192,"min":0,"step":1,"default":0}),
             },
             "optional": {
                 "refer_to":(any,),
@@ -1637,7 +1717,16 @@ class image_scale_pixel_option:
     FUNCTION = "scale_image"
     CATEGORY = CATEGORY_NAME
 
-    def scale_image(self, scale, size_mode, crop_bbox_method_width, crop_bbox_method_hight, fill_color, round_width, round_hight, method, Enable_TotalPixels, refer_to=None):
+    def scale_image(self, 
+                    scale, 
+                    size_mode, 
+                    crop_bbox_method_width, crop_bbox_method_hight, 
+                    fill_color, 
+                    round_width, round_hight, 
+                    method, 
+                    Enable_TotalPixels, 
+                    any_alignment, 
+                    refer_to=None):
         original_size = scale
         if refer_to is not None :
             # 检测refer_to的类型
@@ -1666,6 +1755,7 @@ class image_scale_pixel_option:
                  "round_hight": round_hight,
                  "method": method,
                  "Enable_TotalPixels": Enable_TotalPixels,
+                 "any_alignment": any_alignment,
                  },)
     
     # 输出约分后的比例
