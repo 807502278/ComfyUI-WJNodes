@@ -4,6 +4,7 @@ import os
 from math import gcd
 from functools import reduce
 import re
+import math
 
 import requests
 from tqdm import tqdm
@@ -1348,19 +1349,19 @@ class image_scale_pixel_v2:
 
         if any_alignment != 0:
             alignment = any_alignment
-        if images is None and masks is None:
-            scale = "1:1"
         if target_pixels <= 0:
             Enable_TotalPixels = False
 
         # 处理图像
+        if images is None:
+            images = torch.zeros((1,512,512,3))
         processed_images = None
-        if images is not None:
-            processed_images = self._scale_tensor(images, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=True)
+        processed_images = self._scale_tensor(images, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=True)
         # 处理遮罩
+        if masks is None:
+            masks = torch.ones((1,512,512))
         processed_masks = None
-        if masks is not None:
-            processed_masks = self._scale_tensor(masks, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=False)
+        processed_masks = self._scale_tensor(masks, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=False)
 
         # 计算输出的宽高
         output_width = 0
@@ -1422,10 +1423,7 @@ class image_scale_pixel_v2:
 
     def _scale_tensor(self, tensor, target_pixels, alignment, size_mode, crop_bbox_method_width, crop_bbox_method_hight, round_width, round_hight, method, scale, fill_color, Enable_TotalPixels, is_image=True):
         """缩放张量到目标像素数"""
-        import math
-        if tensor is None:
-            return None
-        # 获取原始尺寸
+        # 获取原尺寸
         original_height = tensor.shape[1]
         original_width = tensor.shape[2]
         original_pixels = original_height * original_width
@@ -1546,6 +1544,7 @@ class image_scale_pixel_v2:
                 crop_dim = "width"
                 crop_target = target_width
         # 执行缩放
+        tensor_scaled = None
         if is_image:
             # 图像张量 (batch, height, width, channels)
             tensor_scaled = tensor.permute(0, 3, 1, 2)  # (batch, channels, height, width)
@@ -1585,7 +1584,6 @@ class image_scale_pixel_v2:
                     else:  # center
                         start_w = (final_width - crop_target) // 2
                     tensor_scaled = tensor_scaled[:, :, :, start_w:start_w + crop_target]
-
             # 如果需要bbox填充，进行外扩填充
             if bbox_needed:
                 # 解析fill_color
@@ -1597,13 +1595,11 @@ class image_scale_pixel_v2:
                     fill_rgb = [r, g, b]
                 except:
                     fill_rgb = [1.0, 1.0, 1.0]  # 默认白色
-
                 # 创建目标尺寸的画布
                 batch_size = tensor_scaled.shape[0]
                 canvas = torch.full((batch_size, 3, target_height, target_width), 0.0, dtype=tensor_scaled.dtype, device=tensor_scaled.device)
                 for i in range(3):
                     canvas[:, i, :, :] = fill_rgb[i]
-
                 # 计算放置位置
                 if crop_bbox_method_width == "left":
                     start_w = 0
@@ -1611,18 +1607,15 @@ class image_scale_pixel_v2:
                     start_w = target_width - final_width
                 else:  # center
                     start_w = (target_width - final_width) // 2
-
                 if crop_bbox_method_hight == "up":
                     start_h = 0
                 elif crop_bbox_method_hight == "down":
                     start_h = target_height - final_height
                 else:  # center
                     start_h = (target_height - final_height) // 2
-
                 # 将缩放后的图像放置到画布上
                 canvas[:, :, start_h:start_h + final_height, start_w:start_w + final_width] = tensor_scaled
                 tensor_scaled = canvas
-
             tensor_scaled = tensor_scaled.permute(0, 2, 3, 1)  # (batch, height, width, channels)
         else:
             # 遮罩张量 (batch, height, width)
@@ -1653,13 +1646,11 @@ class image_scale_pixel_v2:
                     else:  # center
                         start_w = (final_width - crop_target) // 2
                     tensor_scaled = tensor_scaled[:, :, :, start_w:start_w + crop_target]
-
             # 如果需要bbox填充，进行外扩填充
             if bbox_needed:
                 # 创建目标尺寸的画布，遮罩用0填充（黑色）
                 batch_size = tensor_scaled.shape[0]
                 canvas = torch.zeros((batch_size, 1, target_height, target_width), dtype=tensor_scaled.dtype, device=tensor_scaled.device)
-
                 # 计算放置位置
                 if crop_bbox_method_width == "left":
                     start_w = 0
@@ -1667,18 +1658,15 @@ class image_scale_pixel_v2:
                     start_w = target_width - final_width
                 else:  # center
                     start_w = (target_width - final_width) // 2
-
                 if crop_bbox_method_hight == "up":
                     start_h = 0
                 elif crop_bbox_method_hight == "down":
                     start_h = target_height - final_height
                 else:  # center
                     start_h = (target_height - final_height) // 2
-
                 # 将缩放后的遮罩放置到画布上
                 canvas[:, :, start_h:start_h + final_height, start_w:start_w + final_width] = tensor_scaled
                 tensor_scaled = canvas
-
             tensor_scaled = tensor_scaled.squeeze(1)  # (batch, height, width)
         return tensor_scaled
 
@@ -1906,6 +1894,24 @@ class QwenImage_ratio:
             tensor_scaled = tensor_scaled.squeeze(1)  # (batch, height, width)
 
         return tensor_scaled
+
+class ratio_selector:
+    DESCRIPTION = """
+    比例选择器，可输入任何需要输入比例的节点
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "ratio": (["1:1", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9"], {"default": "3:2"}),
+            }
+        }
+    CATEGORY = CATEGORY_NAME
+    RETURN_TYPES = (any,)
+    RETURN_NAMES = ("ratio",)
+    FUNCTION = "ratio_s"
+    def ratio_s(self,ratio):
+        return (ratio,)
 
 # ------------------Math------------------
 CATEGORY_NAME = "WJNode/Math"
@@ -2195,9 +2201,11 @@ NODE_CLASS_MAPPINGS = {
     "image_math": image_math,
     "image_math_value": image_math_value,
     "Robust_Imager_Merge": Robust_Imager_Merge,
+    #WJNode/ImageEdit/ratio
     "image_scale_pixel_v2": image_scale_pixel_v2,
     "image_scale_pixel_option": image_scale_option,
     "QwenImage_ratio": QwenImage_ratio,
+    "ratio_selector": ratio_selector,
     #WJNode/ImageMath
     "any_math": any_math,
     "any_math_v2": any_math_v2,
