@@ -1277,6 +1277,8 @@ class Robust_Imager_Merge:
 
         return tensor2
 
+CATEGORY_NAME = "WJNode/ImageEdit/ratio"
+
 class image_scale_pixel_v2:
     DESCRIPTION = """
     图像按像素缩放
@@ -1294,8 +1296,8 @@ class image_scale_pixel_v2:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "TotalPixels": ("FLOAT", {"max": 1024.0, "min": 0.0001, "step": 0.0001,"default": 1.0486}),
-                "alignment": (["1(No restrictions)", "2", "4", "8", "16", "32", "64(sd/kontext/wan)", "128(wan-vace/wan-i2v)", "256", "512", "1024"], 
+                "TotalPixels": ("FLOAT", {"max": 1024.0, "min": 0.0, "step": 0.0001,"default": 1.0486}),
+                "alignment": (["1(No restrictions)", "2", "4", "8", "16(QwenImage)", "32", "64(sd/kontext/wan)", "128(wan-vace/wan-i2v)", "256", "512", "1024"], 
                                {"default": "64(sd/kontext/wan)"}),
             },
             "optional": {
@@ -1346,6 +1348,10 @@ class image_scale_pixel_v2:
 
         if any_alignment != 0:
             alignment = any_alignment
+        if images is None and masks is None:
+            scale = "1:1"
+        if target_pixels <= 0:
+            Enable_TotalPixels = False
 
         # 处理图像
         processed_images = None
@@ -1371,7 +1377,6 @@ class image_scale_pixel_v2:
         else:
             # 1.3: 如果没有任何图像/遮罩输入，则输出按option_dict参数计算出的尺寸
             try:
-                # 模拟计算目标尺寸
                 if Enable_TotalPixels:
                     if scale == "original":
                         raise ValueError("Cannot calculate size without input images/masks when scale is 'original'")
@@ -1425,7 +1430,11 @@ class image_scale_pixel_v2:
         original_width = tensor.shape[2]
         original_pixels = original_height * original_width
 
-        if Enable_TotalPixels:
+        # 特殊处理：如果 TotalPixels 为 0，直接对当前图像进行对齐
+        if target_pixels == 0:
+            target_width = original_width
+            target_height = original_height
+        elif Enable_TotalPixels:
             # 启用总像素限制：按总像素数计算目标尺寸
             # 1. 根据scale参数确定目标比例
             if scale == "original":
@@ -1673,7 +1682,7 @@ class image_scale_pixel_v2:
             tensor_scaled = tensor_scaled.squeeze(1)  # (batch, height, width)
         return tensor_scaled
 
-class image_scale_pixel_option:
+class image_scale_option:
     DESCRIPTION = """
     图像按像素缩放的高级选项
         默认参数将和image_scale_pixel_v2节点不输入设置时保持一致
@@ -1690,13 +1699,14 @@ class image_scale_pixel_option:
             Enable_TotalPixels：是否启用总像素限制，默认启用，
                 若不启用则按原图像/遮罩裁剪到指定比例(如果为original则不裁剪)后，
                 对齐到alignment指定的参数(如果为1则不处理)
+                若image_scale_pixel_v2的TotalPixels参数为0则强制关闭
             any_alignment：其值将覆盖alignment，用于任意整数的对齐，0表示不覆盖(默认)
     """
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "scale": (["original", "1:1", "3:4", "4:3", "9:16", "16:9"], {"default": "original"}),
+                "scale": (["original", "1:1", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9"], {"default": "original"}),
                 "size_mode": (["fill", "crop","bbox"], {"default": "crop"}),
                 "crop_bbox_method_width": (["center", "left", "right"], {"default": "center"}),
                 "crop_bbox_method_hight": (["center", "up", "down"], {"default": "center"}),
@@ -1763,6 +1773,139 @@ class image_scale_pixel_option:
         data = np.array(data)
         h,w = (data/reduce(gcd, data.tolist())).astype(int)
         return str(w)+":"+str(h)
+
+class QwenImage_ratio:
+    DESCRIPTION = """
+    QwenImage_ratio
+    """
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ratio": (["1:1", "2:3", "3:2", "4:3", "3:4", "16:9", "9:16"], {"default": "1:1"}),
+            },
+            "optional": {
+                "images": ("IMAGE",),
+                "masks": ("MASK",),
+                "option": ("SO",),
+            }
+        }
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
+    RETURN_NAMES = ("images", "masks", "width", "height")
+    FUNCTION = "doit"
+    CATEGORY = CATEGORY_NAME
+
+    def doit(self, ratio, images=None, masks=None, option=None):
+        # 固定分辨率字典
+        ratio_dict = {
+            "1:1": (1328, 1328),
+            "16:9": (1664, 928),
+            "9:16": (928, 1664),
+            "4:3": (1472, 1104),
+            "3:4": (1104, 1472),
+            "3:2": (1584, 1056),
+            "2:3": (1056, 1584),
+        }
+
+        # 获取目标尺寸
+        target_width, target_height = ratio_dict[ratio]
+
+        # 如果有option输入，处理参考和对齐
+        if option is not None:
+            # 如果输入了参考，找出最接近的分辨率
+            if "refer_to" in option and option.get("refer_to") is not None:
+                refer_to = option["refer_to"]
+                ref_width, ref_height = self._get_reference_size(refer_to)
+                if ref_width > 0 and ref_height > 0:
+                    # 找出最接近的分辨率
+                    target_width, target_height = self._find_closest_resolution(ref_width, ref_height, ratio_dict)
+
+            # 如果any_alignment非0或1且Enable_TotalPixels为启用，则对ratio_dict的固定值进行对齐
+            any_alignment = option.get("any_alignment", 0)
+            enable_total_pixels = option.get("Enable_TotalPixels", True)
+
+            if any_alignment not in [0, 1] and enable_total_pixels:
+                target_width = self._align_dimension(target_width, any_alignment, option.get("round_width", "round"))
+                target_height = self._align_dimension(target_height, any_alignment, option.get("round_hight", "round"))
+
+        # 缩放图像和遮罩到目标尺寸
+        processed_images = None
+        processed_masks = None
+
+        if images is not None:
+            processed_images = self._resize_tensor(images, target_width, target_height, is_image=True)
+
+        if masks is not None:
+            processed_masks = self._resize_tensor(masks, target_width, target_height, is_image=False)
+
+        return (processed_images, processed_masks, target_width, target_height)
+
+    def _get_reference_size(self, refer_to):
+        """从参考输入获取尺寸"""
+        if isinstance(refer_to, torch.Tensor):
+            # 图像或遮罩张量
+            if refer_to.dim() >= 3:
+                return refer_to.shape[2], refer_to.shape[1]  # width, height
+        elif isinstance(refer_to, dict):
+            # Latent字典
+            if "samples" in refer_to and isinstance(refer_to["samples"], torch.Tensor):
+                samples = refer_to["samples"]
+                if samples.dim() == 4:
+                    # Latent通常需要乘以8来得到实际图像尺寸
+                    return samples.shape[3] * 8, samples.shape[2] * 8  # width, height
+        return 0, 0
+
+    def _find_closest_resolution(self, ref_width, ref_height, ratio_dict):
+        """找出最接近参考尺寸的分辨率"""
+        ref_pixels = ref_width * ref_height
+        closest_ratio = "1:1"
+        min_diff = float('inf')
+
+        for ratio_key, (width, height) in ratio_dict.items():
+            pixels = width * height
+            diff = abs(pixels - ref_pixels)
+            if diff < min_diff:
+                min_diff = diff
+                closest_ratio = ratio_key
+
+        return ratio_dict[closest_ratio]
+
+    def _align_dimension(self, dimension, alignment, round_mode):
+        """对尺寸进行对齐"""
+        if round_mode == "ceil":
+            return ((dimension + alignment - 1) // alignment) * alignment
+        elif round_mode == "floor":
+            return (dimension // alignment) * alignment
+        else:  # round
+            return round(dimension / alignment) * alignment
+
+    def _resize_tensor(self, tensor, target_width, target_height, is_image=True):
+        """缩放张量到目标尺寸"""
+        if tensor is None:
+            return None
+
+        if is_image:
+            # 图像张量 (batch, height, width, channels)
+            tensor_scaled = tensor.permute(0, 3, 1, 2)  # (batch, channels, height, width)
+            tensor_scaled = torch.nn.functional.interpolate(
+                tensor_scaled,
+                size=(target_height, target_width),
+                mode="bilinear",
+                align_corners=False
+            )
+            tensor_scaled = tensor_scaled.permute(0, 2, 3, 1)  # (batch, height, width, channels)
+        else:
+            # 遮罩张量 (batch, height, width)
+            tensor_scaled = tensor.unsqueeze(1)  # (batch, 1, height, width)
+            tensor_scaled = torch.nn.functional.interpolate(
+                tensor_scaled,
+                size=(target_height, target_width),
+                mode="bilinear",
+                align_corners=False
+            )
+            tensor_scaled = tensor_scaled.squeeze(1)  # (batch, height, width)
+
+        return tensor_scaled
 
 # ------------------Math------------------
 CATEGORY_NAME = "WJNode/Math"
@@ -2053,7 +2196,8 @@ NODE_CLASS_MAPPINGS = {
     "image_math_value": image_math_value,
     "Robust_Imager_Merge": Robust_Imager_Merge,
     "image_scale_pixel_v2": image_scale_pixel_v2,
-    "image_scale_pixel_option": image_scale_pixel_option,
+    "image_scale_pixel_option": image_scale_option,
+    "QwenImage_ratio": QwenImage_ratio,
     #WJNode/ImageMath
     "any_math": any_math,
     "any_math_v2": any_math_v2,
